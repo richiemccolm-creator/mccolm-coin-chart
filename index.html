@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Sam, Isaac &amp; Ben's Coin Chart</title>
+<meta name="theme-color" content="#0a2472">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Coin Chart">
+<meta name="description" content="Earn coins for jobs and spend them in the shop — McColm kids rewards.">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Luckiest+Guy&family=Nunito:ital,wght@0,600;0,800;0,900;1,800&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+:root{
+  --navy:#0a2472;
+  --navy-deep:#04113d;
+  --red:#d62828;
+  --red-dark:#8b0000;
+  --blue:#1560bd;
+  --blue-dark:#0b3d91;
+  --green:#1a7a34;
+  --purple:#5b2c8d;
+  --gold:#ffc42e;
+  --gold-deep:#e08e00;
+  --cream:#fdf6e3;
+  --ink:#141414;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--navy-deep)}
+body{
+  font-family:'Nunito',sans-serif;
+  color:var(--ink);
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 50% 0%, #1a3fa0 0%, #0a2472 45%, #04113d 100%);
+  position:relative;
+  overflow-x:hidden;
+}
+/* halftone dot texture */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(rgba(255,255,255,.09) 1.4px, transparent 1.5px);
+  background-size:11px 11px;
+}
+/* radiating comic rays behind everything */
+body::after{
+  content:'';position:fixed;top:-20vh;left:50%;transform:translateX(-50%);
+  width:200vw;height:120vh;pointer-events:none;z-index:0;opacity:.16;
+  background:repeating-conic-gradient(from 0deg at 50% 30%, #fff 0deg 5deg, transparent 5deg 14deg);
+}
+.skyline{position:fixed;bottom:0;left:0;width:100%;height:200px;z-index:0;opacity:.55;pointer-events:none}
+
+.wrap{position:relative;z-index:2;max-width:1080px;margin:0 auto;padding:14px 14px 60px}
+
+/* ---------- COMIC TYPE ---------- */
+.comic{font-family:'Luckiest Guy',cursive;letter-spacing:1.5px;line-height:1.05;text-transform:uppercase}
+.bang{font-family:'Bangers',cursive;letter-spacing:2px;text-transform:uppercase}
+.outline-2{-webkit-text-stroke:2px #000;paint-order:stroke fill}
+.outline-3{-webkit-text-stroke:3px #000;paint-order:stroke fill}
+
+/* ---------- HEADER ---------- */
+header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:14px}
+.burst{
+  position:absolute;inset:-6px 0 0 0;margin:auto;z-index:-1;
+  background:var(--red);
+  clip-path:polygon(50% 0%,57% 9%,66% 3%,69% 13%,80% 9%,79% 20%,91% 19%,86% 29%,98% 32%,90% 40%,100% 47%,90% 54%,98% 63%,86% 67%,91% 77%,79% 77%,80% 88%,69% 84%,66% 95%,57% 89%,50% 100%,43% 89%,34% 95%,31% 84%,20% 88%,21% 77%,9% 77%,14% 67%,2% 63%,10% 54%,0% 47%,10% 40%,2% 32%,14% 29%,9% 19%,21% 20%,20% 9%,31% 13%,34% 3%,43% 9%);
+  opacity:.85;
+}
+.title-line1{font-size:clamp(1.5rem,6.4vw,2.9rem)}
+.title-line2{font-size:clamp(2.6rem,11vw,5.2rem);color:var(--gold);text-shadow:0 6px 0 #b25c00,0 9px 14px rgba(0,0,0,.5)}
+.n-sam{color:#ff4b4b}.n-isaac{color:#5aa9ff}.n-ben{color:#5ce85c}.n-amp{color:#fff}
+.ribbon{
+  display:inline-block;margin-top:8px;background:var(--navy-deep);color:#fff;
+  border:3px solid var(--gold);padding:6px 26px;font-size:clamp(.75rem,3vw,1.05rem);
+  clip-path:polygon(4% 0,96% 0,100% 50%,96% 100%,4% 100%,0 50%);
+}
+.logo-slot-wrap{position:absolute;top:10px;right:6px;width:70px}
+
+/* ---------- IMAGE PLACEHOLDER SLOTS ---------- */
+.slot{
+  position:relative;display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,.14);
+  border:2px dashed rgba(255,255,255,.65);
+  border-radius:10px;overflow:hidden;flex:none;
+  color:rgba(255,255,255,.85);text-align:center;
+}
+.slot.light{background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.35);color:rgba(0,0,0,.55)}
+.slot img{width:100%;height:100%;object-fit:cover;display:block}
+.slot .slot-label{font-size:.5rem;font-weight:900;letter-spacing:.4px;line-height:1.15;padding:2px;text-transform:uppercase}
+.slot .slot-ico{font-size:1rem;opacity:.7}
+
+/* ---------- HERO SELECT ---------- */
+.hero-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.hero-card{
+  position:relative;cursor:pointer;border:4px solid #000;border-radius:14px;
+  padding:8px 8px 10px;text-align:center;transition:transform .18s,box-shadow .18s,filter .18s;
+  box-shadow:0 6px 0 #000;filter:saturate(.55) brightness(.8);
+}
+.hero-card.active{transform:translateY(-4px) scale(1.03);box-shadow:0 10px 0 #000,0 0 24px rgba(255,196,46,.75);filter:none}
+.hero-card .portrait{width:100%;aspect-ratio:3/4;border-radius:8px;margin-bottom:6px}
+.hero-card .hname{font-size:clamp(.95rem,4vw,1.5rem);color:#fff;text-shadow:0 3px 0 rgba(0,0,0,.6)}
+.hero-card .hbal{
+  display:inline-flex;align-items:center;gap:4px;background:#000;color:var(--gold);
+  border-radius:999px;padding:1px 10px;font-weight:900;font-size:.8rem;margin-top:2px;
+}
+.h-sam{background:linear-gradient(160deg,#ff5b5b,#a30000)}
+.h-isaac{background:linear-gradient(160deg,#5aa9ff,#0b3d91)}
+.h-ben{background:linear-gradient(160deg,#5ce85c,#146c14)}
+
+/* ---------- VAULT / BALANCE ---------- */
+.vault{
+  cursor:pointer;border:5px solid #000;border-radius:16px;margin-bottom:16px;
+  background:linear-gradient(165deg,#ffd75e,#ffb300 55%,#e08e00);
+  box-shadow:0 8px 0 #000,inset 0 3px 0 rgba(255,255,255,.6);
+  padding:14px 16px;display:flex;align-items:center;gap:14px;position:relative;overflow:hidden;
+}
+.vault::after{
+  content:'';position:absolute;top:-60%;left:-30%;width:60%;height:220%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);
+  transform:rotate(18deg);animation:sweep 4.5s ease-in-out infinite;
+}
+@keyframes sweep{0%{left:-40%}55%{left:120%}100%{left:120%}}
+.vault .big{font-size:clamp(2.6rem,12vw,4rem);color:var(--red-dark);line-height:.9}
+.vault .lbl{font-weight:900;color:#7a3b00;font-size:.8rem;text-transform:uppercase;letter-spacing:1px}
+.vault .tap{margin-left:auto;text-align:right;font-weight:900;color:#7a3b00;font-size:.75rem;text-transform:uppercase}
+
+/* ---------- PANELS ---------- */
+.cols{display:grid;grid-template-columns:1fr;gap:16px}
+@media(min-width:900px){.cols{grid-template-columns:1fr 1fr;align-items:start}}
+.panel{border:5px solid #000;border-radius:16px;overflow:hidden;box-shadow:0 8px 0 rgba(0,0,0,.55)}
+.panel.earn{background:var(--red)}
+.panel.shop{background:var(--blue)}
+.panel-head{display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 12px 8px}
+.panel-head .ptitle{font-size:clamp(1.6rem,7vw,2.3rem);color:#fff;text-shadow:0 4px 0 rgba(0,0,0,.55)}
+.panel-body{background:var(--cream);margin:0 8px 8px;border:3px solid #000;border-radius:10px;padding:9px}
+
+/* section banners */
+.band{
+  margin:4px 0 8px;text-align:center;color:#fff;padding:4px 10px;border:2px solid #000;
+  font-size:clamp(.8rem,3.4vw,1rem);
+  clip-path:polygon(3% 0,97% 0,100% 50%,97% 100%,3% 100%,0 50%);
+}
+.band.gold{background:var(--gold);color:#000}
+.band.green{background:var(--green)}
+.band.purple{background:var(--purple)}
+.band.red{background:var(--red)}
+.band.blue{background:var(--blue-dark)}
+
+/* rows */
+.row{
+  display:flex;align-items:center;gap:9px;background:#fff;border:2px solid #000;
+  border-radius:9px;padding:7px 8px;margin-bottom:7px;box-shadow:0 3px 0 rgba(0,0,0,.25);
+}
+.row .icon-slot{width:40px;height:40px;border-radius:8px}
+.row .rtext{flex:1;min-width:0}
+.row .rname{font-weight:900;font-size:.95rem;line-height:1.15}
+.row .rsub{font-size:.72rem;color:#555;font-weight:700}
+.row.locked{opacity:.45;filter:grayscale(.7)}
+.row.cant .coin-btn{opacity:.4}
+
+/* coin buttons */
+.coin-btn{
+  flex:none;width:54px;height:54px;border-radius:50%;border:3px solid #b26a00;cursor:pointer;
+  background:radial-gradient(circle at 35% 30%,#fff3b0,#ffc42e 45%,#e08e00);
+  box-shadow:0 4px 0 #8a5300,inset 0 2px 3px rgba(255,255,255,.8);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;
+  transition:transform .12s,box-shadow .12s;font-family:'Luckiest Guy',cursive;
+}
+.coin-btn:active{transform:translateY(3px);box-shadow:0 1px 0 #8a5300}
+.coin-btn .cnum{font-size:1.15rem;color:var(--red-dark)}
+.coin-btn .cword{font-size:.42rem;font-family:'Nunito';font-weight:900;color:#7a3b00;letter-spacing:.3px}
+.coin-btn:disabled{cursor:not-allowed;filter:grayscale(.8);opacity:.5}
+.coin-btn.blue .cnum{color:var(--blue-dark)}
+.coin-btn.green .cnum{color:var(--green)}
+
+.timer-mini{
+  flex:none;width:38px;height:38px;border-radius:9px;border:2px solid #000;cursor:pointer;
+  background:#fff;font-size:1.05rem;box-shadow:0 3px 0 rgba(0,0,0,.4);
+}
+.timer-mini:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.4)}
+
+.locknote{
+  background:#fff3cd;border:2px dashed #000;border-radius:9px;padding:7px;text-align:center;
+  font-weight:900;font-size:.78rem;margin-bottom:8px;
+}
+
+/* ---------- BOTTOM: HEROES + RULES ---------- */
+.bottom{display:grid;grid-template-columns:1fr;gap:14px;margin-top:16px}
+@media(min-width:900px){.bottom{grid-template-columns:1.2fr 1fr}}
+.hero-art{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.hero-art .big-slot{width:100%;aspect-ratio:3/4;border-radius:12px;border-width:3px}
+.hero-art .cap{
+  text-align:center;color:#fff;font-size:clamp(1rem,4.5vw,1.6rem);margin-top:4px;
+  text-shadow:0 3px 0 rgba(0,0,0,.7);
+}
+.rules{background:var(--cream);border:4px solid var(--gold);border-radius:14px;padding:10px 12px;box-shadow:0 8px 0 rgba(0,0,0,.5)}
+.rules h3{text-align:center;font-size:1.5rem;margin-bottom:8px}
+.rule{display:flex;gap:9px;align-items:flex-start;margin-bottom:8px;font-weight:800;font-size:.86rem}
+.rule .num{
+  flex:none;width:26px;height:26px;background:var(--red);color:#fff;border:2px solid #000;
+  border-radius:50%;display:grid;place-items:center;font-family:'Luckiest Guy';font-size:.85rem;
+}
+.footer-strip{
+  margin-top:16px;text-align:center;color:var(--gold);font-size:clamp(.8rem,3.6vw,1.15rem);
+  text-shadow:0 3px 0 rgba(0,0,0,.6);
+}
+
+/* ---------- MODALS ---------- */
+.modal{position:fixed;inset:0;background:rgba(2,8,30,.86);display:grid;place-items:center;z-index:100;padding:14px;backdrop-filter:blur(3px)}
+.sheet{
+  background:var(--cream);border:5px solid #000;border-radius:18px;width:100%;max-width:520px;
+  max-height:92vh;overflow-y:auto;box-shadow:0 14px 0 rgba(0,0,0,.6);
+}
+.sheet-head{padding:12px;text-align:center;color:#fff;border-bottom:4px solid #000}
+.sheet-head h2{font-size:clamp(1.4rem,6vw,2rem)}
+.sheet-body{padding:12px}
+.btn{
+  width:100%;border:3px solid #000;border-radius:12px;padding:13px;cursor:pointer;
+  font-family:'Luckiest Guy',cursive;font-size:1.05rem;letter-spacing:1px;color:#fff;
+  box-shadow:0 5px 0 rgba(0,0,0,.75);margin-top:8px;text-transform:uppercase;
+}
+.btn:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(0,0,0,.75)}
+.btn.go{background:var(--green)}
+.btn.stop{background:var(--red)}
+.btn.close{background:#333}
+.btn.tax{background:linear-gradient(160deg,#ff9d2e,#d62828)}
+.btn.hist{background:var(--blue-dark)}
+
+#coinCanvas{width:100%;height:auto;background:radial-gradient(circle at 50% 30%,#123a8f,#04113d);border:3px solid #000;border-radius:12px;display:block}
+
+.timer-num{font-family:'Luckiest Guy';font-size:clamp(4rem,22vw,7rem);text-align:center;color:var(--green);line-height:1}
+.timer-ring{display:block;margin:0 auto}
+.brush-tip{text-align:center;font-weight:800;font-size:.95rem;color:#444;margin-top:4px}
+.celebrate{text-align:center;padding:10px 0}
+.celebrate .pop{font-size:clamp(1.6rem,8vw,2.6rem);color:var(--green);animation:pop .5s ease-out}
+@keyframes pop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.18)}100%{transform:scale(1);opacity:1}}
+.spin{display:inline-block;animation:spin 2.4s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.hist-item{background:#fff;border:2px solid #000;border-left-width:8px;border-radius:8px;padding:8px 10px;margin-bottom:7px;display:flex;gap:8px;align-items:center}
+.hist-item.earned{border-left-color:var(--green)}
+.hist-item.spent{border-left-color:var(--red)}
+.hist-item .hdesc{font-weight:900;font-size:.88rem}
+.hist-item .htime{font-size:.7rem;color:#666;font-weight:700}
+.hist-item .hamt{margin-left:auto;font-family:'Luckiest Guy';font-size:1.2rem}
+.hist-item.earned .hamt{color:var(--green)}
+.hist-item.spent .hamt{color:var(--red)}
+
+.toast{
+  position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:200;
+  background:var(--gold);border:3px solid #000;border-radius:999px;padding:9px 20px;
+  font-family:'Luckiest Guy';font-size:1rem;box-shadow:0 6px 0 rgba(0,0,0,.6);
+  animation:toastIn .3s ease-out;
+}
+@keyframes toastIn{from{transform:translate(-50%,26px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+</style>
+</head>
+<body>
+<svg class="skyline" viewBox="0 0 1200 200" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <path fill="#02081f" d="M0,200 L0,120 L40,120 L40,90 L80,90 L80,130 L120,130 L120,70 L150,70 L150,50 L180,50 L180,70 L215,70 L215,110 L255,110 L255,85 L300,85 L300,140 L340,140 L340,100 L380,100 L380,60 L410,60 L410,40 L440,40 L440,60 L480,60 L480,120 L520,120 L520,95 L565,95 L565,135 L610,135 L610,75 L645,75 L645,55 L675,55 L675,75 L715,75 L715,115 L755,115 L755,88 L800,88 L800,142 L840,142 L840,98 L880,98 L880,64 L915,64 L915,44 L945,44 L945,64 L985,64 L985,124 L1025,124 L1025,92 L1070,92 L1070,132 L1110,132 L1110,80 L1150,80 L1150,110 L1200,110 L1200,200 Z"/>
+</svg>
+<div id="root"></div>
+
+<script type="text/babel">
+const {useState,useEffect,useRef,useMemo} = React;
+
+/* =====================================================================
+   IMAGE SLOTS — paste a URL (or a local file path like "img/sam.png")
+   next to any key below and it replaces the dashed placeholder box.
+   Leave "" to keep the placeholder visible.
+   ===================================================================== */
+const IMAGES = {
+  logo:        "",   // small logo / school or family crest, top-right
+  heroSam:     "",   // Sam portrait (used in selector + bottom strip)
+  heroIsaac:   "",
+  heroBen:     "",
+  jobs: {
+    "brush-am":"", "brush-pm":"", "bed":"", "dressed":"", "homework":"",
+    "tidy":"", "cook":"", "club":"", "kind":""
+  },
+  shop: {
+    "tv":"", "snack":"", "movie":"", "switch15":"", "switch30":"", "tax":"",
+    "toy-small":"", "park":"", "late":"", "dayout":"", "toy-big":"", "cinema":""
+  }
+};
+
+/* ---------- data ---------- */
+const KIDS = {
+  sam:   {name:"Sam",   cls:"h-sam",   colour:"#ff4b4b", img:"heroSam",   badge:"⚡"},
+  isaac: {name:"Isaac", cls:"h-isaac", colour:"#5aa9ff", img:"heroIsaac", badge:"⭐"},
+  ben:   {name:"Ben",   cls:"h-ben",   colour:"#5ce85c", img:"heroBen",   badge:"✊"}
+};
+
+const EVERYDAY_JOBS = [
+  {id:"brush-am", name:"Brush teeth", sub:"Morning",       coins:1, timer:true},
+  {id:"brush-pm", name:"Brush teeth", sub:"Night",         coins:1, timer:true},
+  {id:"bed",      name:"Make your bed",                     coins:1},
+  {id:"dressed",  name:"Get dressed on time",               coins:1},
+  {id:"homework", name:"Homework, no fuss",                 coins:2}
+];
+const BONUS_JOBS = [
+  {id:"tidy", name:"Tidy your room",           coins:3},
+  {id:"cook", name:"Help cook or set the table",coins:2},
+  {id:"club", name:"Go to a club or activity",  coins:3},
+  {id:"kind", name:"Be kind & helpful",         coins:2}
+];
+const EVERYDAY_SHOP = [
+  {id:"tv",    name:"Breakfast TV",      sub:"15 minutes",     coins:1},
+  {id:"snack", name:"Choose a special snack",                  coins:5},
+  {id:"movie", name:"Friday Movie Night", sub:"pick the film", coins:5}
+];
+const WEEKEND_SHOP = [
+  {id:"switch15", name:"Nintendo Switch", sub:"15 minutes", coins:3},
+  {id:"switch30", name:"Nintendo Switch", sub:"30 minutes", coins:5}
+];
+const SAVINGS_SHOP = [
+  {id:"toy-small", name:"Small toy",        coins:50},
+  {id:"park",      name:"Park trip + snack",coins:75},
+  {id:"late",      name:"Stay up later",    sub:"30 minutes", coins:80},
+  {id:"dayout",    name:"Day out",          coins:150},
+  {id:"toy-big",   name:"Bigger toy",       coins:200},
+  {id:"cinema",    name:"Cinema trip",      sub:"all three boys", coins:250}
+];
+
+/* ---------- image placeholder component ---------- */
+function Slot({src,label,className,style,light}){
+  return (
+    <div className={"slot "+(light?"light ":"")+(className||"")} style={style}>
+      {src ? <img src={src} alt={label}/> :
+        <div>
+          <div className="slot-ico">🖼️</div>
+          <div className="slot-label">{label}</div>
+        </div>}
+    </div>
+  );
+}
+
+function CoinBtn({value,word,tone,onClick,disabled}){
+  return (
+    <button className={"coin-btn "+(tone||"")} onClick={onClick} disabled={disabled}>
+      <span className="cnum">{value}</span>
+      <span className="cword">{word||(value===1?"COIN":"COINS")}</span>
+    </button>
+  );
+}
+
+/* ---------- simple built-in music (no files needed) ---------- */
+function useBrushingTune(){
+  const ctxRef = useRef(null), stopRef = useRef(null);
+  const start = () => {
+    try{
+      const AC = window.AudioContext||window.webkitAudioContext;
+      const ctx = new AC(); ctxRef.current = ctx;
+      const notes=[523.25,587.33,659.25,783.99,659.25,587.33];
+      let i=0;
+      const gain = ctx.createGain(); gain.gain.value=0.06; gain.connect(ctx.destination);
+      const tick=()=>{
+        const o=ctx.createOscillator(); o.type="triangle";
+        o.frequency.value=notes[i%notes.length]; i++;
+        const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(1,ctx.currentTime+0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.42);
+        o.connect(g); g.connect(gain); o.start(); o.stop(ctx.currentTime+0.45);
+      };
+      tick(); const iv=setInterval(tick,500); stopRef.current=iv;
+    }catch(e){}
+  };
+  const stop = () => {
+    if(stopRef.current) clearInterval(stopRef.current);
+    if(ctxRef.current){ try{ctxRef.current.close();}catch(e){} ctxRef.current=null; }
+  };
+  const fanfare = () => {
+    try{
+      const AC = window.AudioContext||window.webkitAudioContext; const ctx=new AC();
+      [523.25,659.25,783.99,1046.5].forEach((f,n)=>{
+        const o=ctx.createOscillator(); o.type="square"; o.frequency.value=f;
+        const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,ctx.currentTime+n*0.12);
+        g.gain.exponentialRampToValueAtTime(0.14,ctx.currentTime+n*0.12+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+n*0.12+0.5);
+        o.connect(g); g.connect(ctx.destination); o.start(ctx.currentTime+n*0.12); o.stop(ctx.currentTime+n*0.12+0.55);
+      });
+      setTimeout(()=>{try{ctx.close();}catch(e){}},1800);
+    }catch(e){}
+  };
+  return {start,stop,fanfare};
+}
+
+/* ---------- local persistence (Supabase sync can replace this later) ---------- */
+const STORAGE_KEY = "coin-chart-v1";
+const DEFAULT_COINS = {sam:45,isaac:62,ben:28};
+const DEFAULT_LOG = {sam:[],isaac:[],ben:[]};
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return {kid:"sam", coins:DEFAULT_COINS, log:DEFAULT_LOG};
+    const parsed = JSON.parse(raw);
+    return {
+      kid: parsed.kid && KIDS[parsed.kid] ? parsed.kid : "sam",
+      coins: {...DEFAULT_COINS, ...(parsed.coins||{})},
+      log: {
+        sam: Array.isArray(parsed.log?.sam) ? parsed.log.sam : [],
+        isaac: Array.isArray(parsed.log?.isaac) ? parsed.log.isaac : [],
+        ben: Array.isArray(parsed.log?.ben) ? parsed.log.ben : []
+      }
+    };
+  }catch(e){
+    return {kid:"sam", coins:DEFAULT_COINS, log:DEFAULT_LOG};
+  }
+}
+
+/* ================= APP ================= */
+function App(){
+  const initial = useMemo(()=>loadState(),[]);
+  const [kid,setKid] = useState(initial.kid);
+  const [coins,setCoins] = useState(initial.coins);
+  const [log,setLog] = useState(initial.log);
+  const [modal,setModal] = useState(null);          // 'vault' | 'timer' | 'history'
+  const [timerJob,setTimerJob] = useState(null);
+  const [secs,setSecs] = useState(120);
+  const [running,setRunning] = useState(false);
+  const [done,setDone] = useState(false);
+  const [toast,setToast] = useState(null);
+  const canvasRef = useRef(null);
+  const tune = useBrushingTune();
+
+  useEffect(()=>{
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({kid, coins, log}));
+    }catch(e){}
+  },[kid,coins,log]);
+
+  const weekend = useMemo(()=>{const d=new Date().getDay();return d===0||d===6;},[]);
+  const K = KIDS[kid];
+
+  const flash = (msg)=>{setToast(msg);setTimeout(()=>setToast(null),1700);};
+
+  const earn = (amount,desc)=>{
+    setCoins(c=>({...c,[kid]:c[kid]+amount}));
+    setLog(l=>({...l,[kid]:[{type:"earned",amount,desc,when:new Date().toLocaleString("en-GB")},...l[kid]]}));
+    flash("+"+amount+" for "+K.name+"!");
+  };
+  const spend = (amount,desc)=>{
+    if(coins[kid] < amount){ flash("Not enough coins!"); return; }
+    setCoins(c=>({...c,[kid]:c[kid]-amount}));
+    setLog(l=>({...l,[kid]:[{type:"spent",amount,desc,when:new Date().toLocaleString("en-GB")},...l[kid]]}));
+    flash("−"+amount+" · "+desc);
+  };
+
+  /* timer */
+  const openTimer = (job)=>{ setTimerJob(job); setSecs(120); setRunning(false); setDone(false); setModal("timer"); };
+  const closeTimer = ()=>{ tune.stop(); setRunning(false); setModal(null); setTimerJob(null); };
+  useEffect(()=>{
+    if(!running) return;
+    if(secs<=0){
+      setRunning(false); tune.stop(); tune.fanfare(); setDone(true);
+      earn(timerJob ? timerJob.coins : 1, (timerJob?timerJob.name+" ("+timerJob.sub+")":"Brush teeth"));
+      return;
+    }
+    const t=setTimeout(()=>setSecs(s=>s-1),1000);
+    return ()=>clearTimeout(t);
+  },[running,secs]);
+
+  /* coin spill canvas */
+  useEffect(()=>{
+    if(modal!=="vault"||!canvasRef.current) return;
+    const cv=canvasRef.current, ctx=cv.getContext("2d");
+    const W=cv.width,H=cv.height, target=Math.min(coins[kid],120);
+    let parts=[],frame=0,raf;
+    const make=()=>({x:W*0.5+(Math.random()-0.5)*W*0.5,y:-30-Math.random()*60,
+      vx:(Math.random()-0.5)*3.4,vy:Math.random()*1.6+1,r:Math.random()*Math.PI*2,
+      vr:(Math.random()-0.5)*0.22,s:13+Math.random()*7,rest:false});
+    const draw=(p)=>{
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r);
+      const sq=Math.abs(Math.cos(p.r));
+      ctx.beginPath();ctx.ellipse(0,0,p.s*Math.max(sq,0.18),p.s,0,0,Math.PI*2);
+      const g=ctx.createLinearGradient(-p.s,-p.s,p.s,p.s);
+      g.addColorStop(0,"#fff3b0");g.addColorStop(.45,"#ffc42e");g.addColorStop(1,"#c97a00");
+      ctx.fillStyle=g;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle="#8a5300";ctx.stroke();
+      if(sq>0.45){ctx.fillStyle="#8a5300";ctx.font="bold "+Math.round(p.s)+"px serif";
+        ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("★",0,1);}
+      ctx.restore();
+    };
+    const loop=()=>{
+      ctx.clearRect(0,0,W,H);
+      if(frame%3===0 && parts.length<target) parts.push(make());
+      parts.forEach(p=>{
+        if(!p.rest){
+          p.vy+=0.34;p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;
+          if(p.x<p.s||p.x>W-p.s){p.vx*=-0.6;p.x=Math.max(p.s,Math.min(W-p.s,p.x));}
+          if(p.y>H-p.s-4){p.y=H-p.s-4;p.vy*=-0.32;p.vx*=0.72;p.vr*=0.5;
+            if(Math.abs(p.vy)<1.1){p.rest=true;p.vy=0;p.r=Math.round(p.r/Math.PI)*Math.PI;}}
+        }
+        draw(p);
+      });
+      frame++;raf=requestAnimationFrame(loop);
+    };
+    loop();
+    return ()=>cancelAnimationFrame(raf);
+  },[modal,kid,coins]);
+
+  const mmss=(s)=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+  const pct = 1-(secs/120);
+
+  /* ---------- row renderers ---------- */
+  const JobRow = ({job,tone,group}) => (
+    <div className="row">
+      <Slot light src={IMAGES.jobs[job.id]} label={job.id} className="icon-slot"/>
+      <div className="rtext">
+        <div className="rname">{job.name}</div>
+        {job.sub && <div className="rsub">{job.sub}</div>}
+      </div>
+      {job.timer && <button className="timer-mini" title="Start 2-minute brushing timer" onClick={()=>openTimer(job)}>⏱️</button>}
+      <CoinBtn value={job.coins} tone={tone} onClick={()=>earn(job.coins,job.name+(job.sub?" ("+job.sub+")":""))}/>
+    </div>
+  );
+
+  const ShopRow = ({item,tone,locked,section}) => {
+    const cant = coins[kid] < item.coins;
+    return (
+      <div className={"row "+(locked?"locked ":"")+(cant?"cant":"")}>
+        <Slot light src={IMAGES.shop[item.id]} label={item.id} className="icon-slot"/>
+        <div className="rtext">
+          <div className="rname">{item.name}</div>
+          {item.sub && <div className="rsub">{item.sub}</div>}
+        </div>
+        <CoinBtn value={item.coins} tone={tone} disabled={locked||cant}
+          onClick={()=>spend(item.coins,item.name)}/>
+      </div>
+    );
+  };
+
+  return (
+    <div className="wrap">
+
+      {/* ---------------- HEADER ---------------- */}
+      <header>
+        <div className="burst"></div>
+        <div className="logo-slot-wrap">
+          <Slot src={IMAGES.logo} label="Logo" style={{width:"70px",height:"70px",borderRadius:"50%"}}/>
+        </div>
+        <div className="comic title-line1 outline-2">
+          <span className="n-sam">Sam</span><span className="n-amp">, </span>
+          <span className="n-isaac">Isaac</span> <span className="n-amp">&amp;</span> <span className="n-ben">Ben's</span>
+        </div>
+        <div className="comic title-line2 outline-3">Coin Chart</div>
+        <div className="ribbon bang">★ Earn coins. Spend or save! ★</div>
+      </header>
+
+      {/* ---------------- HERO SELECT ---------------- */}
+      <div className="hero-row">
+        {Object.entries(KIDS).map(([key,k])=>(
+          <div key={key} className={"hero-card "+k.cls+(kid===key?" active":"")} onClick={()=>setKid(key)}>
+            <Slot src={IMAGES[k.img]} label={k.name+" photo"} className="portrait"/>
+            <div className="comic hname">{k.name} {k.badge}</div>
+            <div className="hbal">🪙 {coins[key]}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ---------------- VAULT ---------------- */}
+      <div className="vault" onClick={()=>setModal("vault")}>
+        <Slot light src={IMAGES[K.img]} label={K.name} style={{width:"56px",height:"56px",borderRadius:"50%"}}/>
+        <div>
+          <div className="lbl">{K.name}'s coin bank</div>
+          <div className="comic big">{coins[kid]}</div>
+        </div>
+        <div className="tap">Tap the lid<br/>to tip them out ⤵</div>
+      </div>
+
+      {/* ---------------- TWO PANELS ---------------- */}
+      <div className="cols">
+
+        {/* EARN */}
+        <section className="panel earn">
+          <div className="panel-head">
+            <div className="comic ptitle outline-2">How to Earn</div>
+            <div style={{fontSize:"1.7rem"}}>🪙</div>
+          </div>
+          <div className="panel-body">
+            <div className="band gold comic">★ Everyday Jobs ★</div>
+            {EVERYDAY_JOBS.map(j=><JobRow key={j.id} job={j}/>)}
+            <div className="band red comic">★ Bonus Jobs ★</div>
+            {BONUS_JOBS.map(j=><JobRow key={j.id} job={j}/>)}
+          </div>
+        </section>
+
+        {/* SHOP */}
+        <section className="panel shop">
+          <div className="panel-head">
+            <div className="comic ptitle outline-2">The Shop</div>
+            <div style={{fontSize:"1.7rem"}}>🛒</div>
+          </div>
+          <div className="panel-body">
+            <div className="band blue comic">★ Everyday Shop — any day ★</div>
+            {EVERYDAY_SHOP.map(i=><ShopRow key={i.id} item={i} tone="blue"/>)}
+
+            <div className="band green comic">★ Weekend Only ★</div>
+            {!weekend && <div className="locknote">🔒 Locked until Saturday</div>}
+            {WEEKEND_SHOP.map(i=><ShopRow key={i.id} item={i} tone="green" locked={!weekend}/>)}
+
+            <div className="band purple comic">★ Special Rule ★</div>
+            <div className="row">
+              <Slot light src={IMAGES.shop.tax} label="tax" className="icon-slot"/>
+              <div className="rtext">
+                <div className="rname">Mum's Food Tax</div>
+                <div className="rsub">Ask nicely — 2 coins per request</div>
+              </div>
+              <CoinBtn value={2} word="PER REQ" onClick={()=>spend(2,"Mum's Food Tax")} disabled={coins[kid]<2}/>
+            </div>
+
+            <div className="band red comic">★ Savings Shop — weekends ★</div>
+            {!weekend && <div className="locknote">🔒 Big rewards open Saturday &amp; Sunday</div>}
+            {SAVINGS_SHOP.map(i=><ShopRow key={i.id} item={i} locked={!weekend}/>)}
+          </div>
+        </section>
+      </div>
+
+      {/* ---------------- BOTTOM ---------------- */}
+      <div className="bottom">
+        <div>
+          <div className="hero-art">
+            {Object.entries(KIDS).map(([key,k])=>(
+              <div key={key} onClick={()=>setKid(key)} style={{cursor:"pointer"}}>
+                <Slot src={IMAGES[k.img]} label={k.name+" hero art"} className="big-slot"/>
+                <div className="comic cap" style={{color:k.colour}}>{k.name} {k.badge}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rules">
+          <h3 className="comic">★ The Rules ★</h3>
+          <div className="rule"><span className="num">1</span><span>Do the job ➜ get your coins</span></div>
+          <div className="rule"><span className="num">2</span><span>Payday every day 🪙 — Shop Day is <b>Saturday</b></span></div>
+          <div className="rule"><span className="num">3</span><span>Spend now or save up for something bigger — your choice!</span></div>
+          <button className="btn tax" onClick={()=>spend(2,"Mum's Food Tax")}>🍽️ Mum's Food Tax −2</button>
+          <button className="btn hist" onClick={()=>setModal("history")}>📋 {K.name}'s History</button>
+        </div>
+      </div>
+
+      <div className="footer-strip comic">★ Be a hero. Make good choices. Reach your goals! ★</div>
+
+      {/* ---------------- VAULT MODAL ---------------- */}
+      {modal==="vault" && (
+        <div className="modal" onClick={()=>setModal(null)}>
+          <div className="sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-head" style={{background:K.colour}}>
+              <h2 className="comic outline-2">{K.name}'s Coins</h2>
+            </div>
+            <div className="sheet-body">
+              <canvas id="coinCanvas" ref={canvasRef} width="460" height="340"></canvas>
+              <div style={{textAlign:"center",marginTop:"10px"}}>
+                <div className="comic" style={{fontSize:"3.4rem",color:"var(--red-dark)"}}>{coins[kid]}</div>
+                <div style={{fontWeight:900,letterSpacing:"1px"}}>COINS IN THE BANK</div>
+              </div>
+              <button className="btn close" onClick={()=>setModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- TIMER MODAL ---------------- */}
+      {modal==="timer" && (
+        <div className="modal">
+          <div className="sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-head" style={{background:"var(--green)"}}>
+              <h2 className="comic outline-2">🪥 Brushing Time</h2>
+            </div>
+            <div className="sheet-body">
+              {done ? (
+                <div className="celebrate">
+                  <div className="spin" style={{fontSize:"3.5rem"}}>🪙</div>
+                  <div className="comic pop">Well done, {K.name}!</div>
+                  <div style={{fontWeight:900,marginTop:"6px"}}>You earned 1 coin ⭐</div>
+                  <button className="btn go" onClick={closeTimer}>Brilliant!</button>
+                </div>
+              ):(
+                <>
+                  <svg className="timer-ring" width="180" height="180" viewBox="0 0 120 120">
+                    <circle cx="60" cy="60" r="52" fill="none" stroke="#00000022" strokeWidth="12"/>
+                    <circle cx="60" cy="60" r="52" fill="none" stroke="#1a7a34" strokeWidth="12"
+                      strokeLinecap="round" strokeDasharray={2*Math.PI*52}
+                      strokeDashoffset={2*Math.PI*52*(1-pct)}
+                      transform="rotate(-90 60 60)"/>
+                  </svg>
+                  <div className="timer-num">{mmss(secs)}</div>
+                  <div className="brush-tip">
+                    {running ? "Keep going — top, bottom, all the way round! 🎵" : "Press start, then brush for two whole minutes."}
+                  </div>
+                  {!running
+                    ? <button className="btn go" onClick={()=>{setRunning(true);tune.start();}}>▶ Start brushing</button>
+                    : <button className="btn stop" onClick={()=>{tune.stop();setRunning(false);}}>⏸ Pause</button>}
+                  <button className="btn close" onClick={closeTimer}>Cancel</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- HISTORY MODAL ---------------- */}
+      {modal==="history" && (
+        <div className="modal" onClick={()=>setModal(null)}>
+          <div className="sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-head" style={{background:"var(--blue-dark)"}}>
+              <h2 className="comic outline-2">📋 {K.name}'s History</h2>
+            </div>
+            <div className="sheet-body">
+              {log[kid].length===0
+                ? <div style={{textAlign:"center",padding:"26px",fontWeight:800,color:"#777"}}>Nothing logged yet today.</div>
+                : log[kid].map((e,i)=>(
+                    <div key={i} className={"hist-item "+e.type}>
+                      <div>
+                        <div className="hdesc">{e.desc}</div>
+                        <div className="htime">{e.when}</div>
+                      </div>
+                      <div className="hamt">{e.type==="earned"?"+":"−"}{e.amount}</div>
+                    </div>
+                  ))}
+              <button className="btn close" onClick={()=>setModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>, document.getElementById("root"));
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("/sw.js").catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
