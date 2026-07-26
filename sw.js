@@ -1,9 +1,10 @@
 /* Coin Chart — offline shell cache */
-const CACHE = "coin-chart-v1";
+const CACHE = "coin-chart-v2";
 const ASSETS = [
   "/",
   "/index.html",
   "/manifest.webmanifest",
+  "/img/logo.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png",

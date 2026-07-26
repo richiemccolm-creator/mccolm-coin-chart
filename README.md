@@ -1,5 +1,7 @@
 # Sam, Isaac & Ben's Coin Chart
 
+**Live:** [https://mccolm-coin-chart.vercel.app](https://mccolm-coin-chart.vercel.app)
+
 Kids rewards PWA — separate deploy from [The Ledger](https://github.com/richiemccolm-creator/the-ledger), same Supabase project when you wire persistence.
 
 **Stack:** static HTML + React (CDN) · Vercel · optional shared Supabase
@@ -16,9 +18,16 @@ On iPhone Safari: Share → **Add to Home Screen** (works best over HTTPS / afte
 
 ## Deploy on Vercel (own subdomain)
 
-1. Push this folder to a new GitHub repo (e.g. `mccolm-coin-chart`).
-2. In Vercel → **Add New Project** → import that repo (Framework Preset: **Other** / static).
-3. Deploy. You get something like `https://mccolm-coin-chart.vercel.app`.
+From this folder (CLI):
+
+```bash
+npx vercel --yes --prod --project mccolm-coin-chart
+```
+
+Or: push to GitHub → Vercel **Add New Project** → import (Framework: **Other** / static).  
+You get something like `https://mccolm-coin-chart.vercel.app`.
+
+(Folder name has spaces/capitals — always pass `--project mccolm-coin-chart`.)
 4. **Custom subdomain** (recommended):
    - Vercel → Project → Settings → Domains
    - Add e.g. `coins.yourdomain.com` (or `coin-chart.yourdomain.com`)

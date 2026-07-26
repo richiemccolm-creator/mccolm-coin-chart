@@ -83,6 +83,10 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   clip-path:polygon(4% 0,96% 0,100% 50%,96% 100%,4% 100%,0 50%);
 }
 .logo-slot-wrap{position:absolute;top:10px;right:6px;width:70px}
+.brand-logo{
+  display:block;width:min(340px,78vw);height:auto;margin:0 auto 6px;
+  filter:drop-shadow(0 8px 14px rgba(0,0,0,.55));
+}
 
 /* ---------- IMAGE PLACEHOLDER SLOTS ---------- */
 .slot{
@@ -278,7 +282,7 @@ const {useState,useEffect,useRef,useMemo} = React;
    Leave "" to keep the placeholder visible.
    ===================================================================== */
 const IMAGES = {
-  logo:        "",   // small logo / school or family crest, top-right
+  logo:        "/img/logo.png",   // Hero Coins logo (transparent PNG)
   heroSam:     "",   // Sam portrait (used in selector + bottom strip)
   heroIsaac:   "",
   heroBen:     "",
@@ -543,9 +547,7 @@ function App(){
       {/* ---------------- HEADER ---------------- */}
       <header>
         <div className="burst"></div>
-        <div className="logo-slot-wrap">
-          <Slot src={IMAGES.logo} label="Logo" style={{width:"70px",height:"70px",borderRadius:"50%"}}/>
-        </div>
+        <img className="brand-logo" src={IMAGES.logo} alt="Hero Coins"/>
         <div className="comic title-line1 outline-2">
           <span className="n-sam">Sam</span><span className="n-amp">, </span>
           <span className="n-isaac">Isaac</span> <span className="n-amp">&amp;</span> <span className="n-ben">Ben's</span>
