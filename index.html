@@ -76,7 +76,7 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
 }
 .title-line1{font-size:clamp(1.5rem,6.4vw,2.9rem)}
 .title-line2{font-size:clamp(2.6rem,11vw,5.2rem);color:var(--gold);text-shadow:0 6px 0 #b25c00,0 9px 14px rgba(0,0,0,.5)}
-.n-sam{color:#ff4b4b}.n-isaac{color:#5aa9ff}.n-ben{color:#5ce85c}.n-amp{color:#fff}
+.n-sam{color:#ff8c00}.n-isaac{color:#5aa9ff}.n-ben{color:#5ce85c}.n-amp{color:#fff}
 .ribbon{
   display:inline-block;margin-top:8px;background:var(--navy-deep);color:#fff;
   border:3px solid var(--gold);padding:6px 26px;font-size:clamp(.75rem,3vw,1.05rem);
@@ -97,7 +97,7 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   color:rgba(255,255,255,.85);text-align:center;
 }
 .slot.light{background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.35);color:rgba(0,0,0,.55)}
-.slot img{width:100%;height:100%;object-fit:cover;display:block}
+.slot img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block}
 .slot .slot-label{font-size:.5rem;font-weight:900;letter-spacing:.4px;line-height:1.15;padding:2px;text-transform:uppercase}
 .slot .slot-ico{font-size:1rem;opacity:.7}
 
@@ -115,7 +115,7 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   display:inline-flex;align-items:center;gap:4px;background:#000;color:var(--gold);
   border-radius:999px;padding:1px 10px;font-weight:900;font-size:.8rem;margin-top:2px;
 }
-.h-sam{background:linear-gradient(160deg,#ff5b5b,#a30000)}
+.h-sam{background:linear-gradient(160deg,#ffb347,#ff7a00 45%,#e85d04)}
 .h-isaac{background:linear-gradient(160deg,#5aa9ff,#0b3d91)}
 .h-ben{background:linear-gradient(160deg,#5ce85c,#146c14)}
 
@@ -283,7 +283,7 @@ const {useState,useEffect,useRef,useMemo} = React;
    ===================================================================== */
 const IMAGES = {
   logo:        "/img/logo.png",   // Hero Coins logo (transparent PNG)
-  heroSam:     "",   // Sam portrait (used in selector + bottom strip)
+  heroSam:     "/img/sam.png",   // Sam portrait (used in selector + bottom strip)
   heroIsaac:   "",
   heroBen:     "",
   jobs: {
@@ -298,7 +298,7 @@ const IMAGES = {
 
 /* ---------- data ---------- */
 const KIDS = {
-  sam:   {name:"Sam",   cls:"h-sam",   colour:"#ff4b4b", img:"heroSam",   badge:"⚡"},
+  sam:   {name:"Sam",   cls:"h-sam",   colour:"#ff8c00", img:"heroSam",   badge:"⚡"},
   isaac: {name:"Isaac", cls:"h-isaac", colour:"#5aa9ff", img:"heroIsaac", badge:"⭐"},
   ben:   {name:"Ben",   cls:"h-ben",   colour:"#5ce85c", img:"heroBen",   badge:"✊"}
 };
