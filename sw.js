@@ -1,8 +1,11 @@
 /* Coin Chart — offline shell cache */
-const CACHE = "coin-chart-v9";
-const ASSETS = [
+var CACHE = "coin-chart-v10";
+var ASSETS = [
   "/",
   "/index.html",
+  "/app.js",
+  "/vendor/react.production.min.js",
+  "/vendor/react-dom.production.min.js",
   "/manifest.webmanifest",
   "/img/logo.png",
   "/img/sam.png",
@@ -19,34 +22,50 @@ const ASSETS = [
   "/img/kind.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
-  "/icons/apple-touch-icon.png",
+  "/icons/apple-touch-icon.png"
 ];
 
-self.addEventListener("install", (event) => {
+self.addEventListener("install", function (event) {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(function (cache) {
+      return cache.addAll(ASSETS);
+    }).then(function () {
+      return self.skipWaiting();
+    })
   );
 });
 
-self.addEventListener("activate", (event) => {
+self.addEventListener("activate", function (event) {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys().then(function (keys) {
+      return Promise.all(
+        keys.filter(function (k) { return k !== CACHE; }).map(function (k) {
+          return caches.delete(k);
+        })
+      );
+    }).then(function () {
+      return self.clients.claim();
+    })
   );
 });
 
-self.addEventListener("fetch", (event) => {
+self.addEventListener("fetch", function (event) {
   if (event.request.method !== "GET") return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetched = fetch(event.request)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+    caches.match(event.request).then(function (cached) {
+      var fetched = fetch(event.request)
+        .then(function (res) {
+          if (res && res.status === 200) {
+            var copy = res.clone();
+            caches.open(CACHE).then(function (cache) {
+              cache.put(event.request, copy);
+            });
+          }
           return res;
         })
-        .catch(() => cached);
+        .catch(function () {
+          return cached;
+        });
       return cached || fetched;
     })
   );

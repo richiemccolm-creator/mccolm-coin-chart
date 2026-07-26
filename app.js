@@ -1,0 +1,1125 @@
+function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
+function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
+function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
+function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
+function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { _defineProperty(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == _typeof(i) ? i : i + ""; }
+function _toPrimitive(t, r) { if ("object" != _typeof(t) || !t) return t; var e = t[Symbol.toPrimitive]; if (void 0 !== e) { var i = e.call(t, r || "default"); if ("object" != _typeof(i)) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === r ? String : Number)(t); }
+/* Small polyfills for iOS 10–12 Safari and older smart-TV Chromium */
+(function () {
+  if (!String.prototype.padStart) {
+    String.prototype.padStart = function (targetLength, padString) {
+      targetLength = targetLength >> 0;
+      padString = String(typeof padString !== "undefined" ? padString : " ");
+      if (this.length >= targetLength) return String(this);
+      targetLength = targetLength - this.length;
+      if (targetLength > padString.length) {
+        padString += padString.repeat ? padString.repeat(targetLength / padString.length) : Array(targetLength + 1).join(padString);
+      }
+      return padString.slice(0, targetLength) + String(this);
+    };
+  }
+  if (!Object.assign) {
+    Object.assign = function (target) {
+      if (target == null) throw new TypeError("Cannot convert undefined or null to object");
+      var to = Object(target);
+      for (var i = 1; i < arguments.length; i++) {
+        var next = arguments[i];
+        if (next != null) {
+          for (var key in next) {
+            if (Object.prototype.hasOwnProperty.call(next, key)) to[key] = next[key];
+          }
+        }
+      }
+      return to;
+    };
+  }
+  if (!Object.entries) {
+    Object.entries = function (obj) {
+      var own = Object.keys(obj),
+        i = 0,
+        out = [];
+      for (; i < own.length; i++) out.push([own[i], obj[own[i]]]);
+      return out;
+    };
+  }
+  if (!Array.prototype.includes) {
+    Array.prototype.includes = function (search, from) {
+      return this.indexOf(search, from || 0) !== -1;
+    };
+  }
+  if (typeof window !== "undefined" && window.CanvasRenderingContext2D && !CanvasRenderingContext2D.prototype.ellipse) {
+    CanvasRenderingContext2D.prototype.ellipse = function (x, y, rx, ry, rot, start, end, ccw) {
+      this.save();
+      this.translate(x, y);
+      this.rotate(rot || 0);
+      this.scale(rx, ry);
+      this.arc(0, 0, 1, start, end, ccw);
+      this.restore();
+    };
+  }
+})();
+var _React = React,
+  useState = _React.useState,
+  useEffect = _React.useEffect,
+  useRef = _React.useRef,
+  useMemo = _React.useMemo;
+
+/* =====================================================================
+   IMAGE SLOTS — paste a URL (or a local file path like "img/sam.png")
+   next to any key below and it replaces the dashed placeholder box.
+   Leave "" to keep the placeholder visible.
+   ===================================================================== */
+var IMAGES = {
+  logo: "/img/logo.png",
+  // Hero Coins logo (transparent PNG)
+  heroSam: "/img/sam.png",
+  // Sam portrait (used in selector + bottom strip)
+  heroIsaac: "/img/isaac.png",
+  heroBen: "/img/ben.png",
+  jobs: {
+    "brush-am": "/img/brush.png",
+    "brush-pm": "/img/brush-pm.png",
+    "bed": "/img/bed.png",
+    "dressed": "/img/dressed.png",
+    "homework": "/img/homework.png",
+    "tidy": "/img/tidy.png",
+    "cook": "/img/cook.png",
+    "club": "/img/club.png",
+    "kind": "/img/kind.png"
+  },
+  shop: {
+    "tv": "",
+    "snack": "",
+    "movie": "",
+    "switch15": "",
+    "switch30": "",
+    "tax": "",
+    "toy-small": "",
+    "park": "",
+    "late": "",
+    "dayout": "",
+    "toy-big": "",
+    "cinema": ""
+  }
+};
+
+/* ---------- data ---------- */
+var KIDS = {
+  sam: {
+    name: "Sam",
+    cls: "h-sam",
+    colour: "#ff8c00",
+    img: "heroSam",
+    badge: "⚡"
+  },
+  isaac: {
+    name: "Isaac",
+    cls: "h-isaac",
+    colour: "#5aa9ff",
+    img: "heroIsaac",
+    badge: "⭐"
+  },
+  ben: {
+    name: "Ben",
+    cls: "h-ben",
+    colour: "#ff3b3b",
+    img: "heroBen",
+    badge: "✊"
+  }
+};
+var EVERYDAY_JOBS = [{
+  id: "brush-am",
+  name: "Brush teeth",
+  sub: "Morning",
+  coins: 1,
+  timer: true
+}, {
+  id: "brush-pm",
+  name: "Brush teeth",
+  sub: "Night",
+  coins: 1,
+  timer: true
+}, {
+  id: "bed",
+  name: "Make your bed",
+  coins: 1
+}, {
+  id: "dressed",
+  name: "Get dressed on time",
+  coins: 1
+}, {
+  id: "homework",
+  name: "Homework, no fuss",
+  coins: 2
+}];
+var BONUS_JOBS = [{
+  id: "tidy",
+  name: "Tidy your room",
+  coins: 3
+}, {
+  id: "cook",
+  name: "Help cook or set the table",
+  coins: 2
+}, {
+  id: "club",
+  name: "Go to a club or activity",
+  coins: 3
+}, {
+  id: "kind",
+  name: "Be kind & helpful",
+  coins: 2
+}];
+var EVERYDAY_SHOP = [{
+  id: "tv",
+  name: "Breakfast TV",
+  sub: "15 minutes",
+  coins: 1
+}, {
+  id: "snack",
+  name: "Choose a special snack",
+  coins: 5
+}, {
+  id: "movie",
+  name: "Friday Movie Night",
+  sub: "pick the film",
+  coins: 5
+}];
+var WEEKEND_SHOP = [{
+  id: "switch15",
+  name: "Nintendo Switch",
+  sub: "15 minutes",
+  coins: 3
+}, {
+  id: "switch30",
+  name: "Nintendo Switch",
+  sub: "30 minutes",
+  coins: 5
+}];
+var SAVINGS_SHOP = [{
+  id: "toy-small",
+  name: "Small toy",
+  coins: 50
+}, {
+  id: "park",
+  name: "Park trip + snack",
+  coins: 75
+}, {
+  id: "late",
+  name: "Stay up later",
+  sub: "30 minutes",
+  coins: 80
+}, {
+  id: "dayout",
+  name: "Day out",
+  coins: 150
+}, {
+  id: "toy-big",
+  name: "Bigger toy",
+  coins: 200
+}, {
+  id: "cinema",
+  name: "Cinema trip",
+  sub: "all three boys",
+  coins: 250
+}];
+
+/* ---------- image placeholder component ---------- */
+function Slot(_ref) {
+  var src = _ref.src,
+    label = _ref.label,
+    className = _ref.className,
+    style = _ref.style,
+    light = _ref.light;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "slot " + (src ? "has-img " : "") + (light ? "light " : "") + (className || ""),
+    style: style
+  }, src ? /*#__PURE__*/React.createElement("img", {
+    src: src,
+    alt: label
+  }) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "slot-ico"
+  }, "🖼️"), /*#__PURE__*/React.createElement("div", {
+    className: "slot-label"
+  }, label)));
+}
+function CoinBtn(_ref2) {
+  var value = _ref2.value,
+    word = _ref2.word,
+    tone = _ref2.tone,
+    onClick = _ref2.onClick,
+    disabled = _ref2.disabled;
+  return /*#__PURE__*/React.createElement("button", {
+    className: "coin-btn " + (tone || ""),
+    onClick: onClick,
+    disabled: disabled
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "cnum"
+  }, value), /*#__PURE__*/React.createElement("span", {
+    className: "cword"
+  }, word || (value === 1 ? "COIN" : "COINS")));
+}
+
+/* ---------- simple built-in music (no files needed) ---------- */
+function useBrushingTune() {
+  var ctxRef = useRef(null),
+    stopRef = useRef(null);
+  var start = function start() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      var ctx = new AC();
+      ctxRef.current = ctx;
+      var notes = [523.25, 587.33, 659.25, 783.99, 659.25, 587.33];
+      var i = 0;
+      var gain = ctx.createGain();
+      gain.gain.value = 0.06;
+      gain.connect(ctx.destination);
+      var tick = function tick() {
+        var o = ctx.createOscillator();
+        o.type = "triangle";
+        o.frequency.value = notes[i % notes.length];
+        i++;
+        var g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(1, ctx.currentTime + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.42);
+        o.connect(g);
+        g.connect(gain);
+        o.start();
+        o.stop(ctx.currentTime + 0.45);
+      };
+      tick();
+      var iv = setInterval(tick, 500);
+      stopRef.current = iv;
+    } catch (e) {}
+  };
+  var stop = function stop() {
+    if (stopRef.current) clearInterval(stopRef.current);
+    if (ctxRef.current) {
+      try {
+        ctxRef.current.close();
+      } catch (e) {}
+      ctxRef.current = null;
+    }
+  };
+  var fanfare = function fanfare() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      var ctx = new AC();
+      [523.25, 659.25, 783.99, 1046.5].forEach(function (f, n) {
+        var o = ctx.createOscillator();
+        o.type = "square";
+        o.frequency.value = f;
+        var g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + n * 0.12);
+        g.gain.exponentialRampToValueAtTime(0.14, ctx.currentTime + n * 0.12 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + n * 0.12 + 0.5);
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(ctx.currentTime + n * 0.12);
+        o.stop(ctx.currentTime + n * 0.12 + 0.55);
+      });
+      setTimeout(function () {
+        try {
+          ctx.close();
+        } catch (e) {}
+      }, 1800);
+    } catch (e) {}
+  };
+  return {
+    start,
+    stop,
+    fanfare
+  };
+}
+
+/* ---------- local persistence (Supabase sync can replace this later) ---------- */
+var STORAGE_KEY = "coin-chart-v2";
+var DEFAULT_COINS = {
+  sam: 0,
+  isaac: 0,
+  ben: 0
+};
+var DEFAULT_LOG = {
+  sam: [],
+  isaac: [],
+  ben: []
+};
+function loadState() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {
+      kid: "sam",
+      coins: DEFAULT_COINS,
+      log: DEFAULT_LOG
+    };
+    var parsed = JSON.parse(raw);
+    return {
+      kid: parsed.kid && KIDS[parsed.kid] ? parsed.kid : "sam",
+      coins: _objectSpread(_objectSpread({}, DEFAULT_COINS), parsed.coins || {}),
+      log: {
+        sam: Array.isArray(parsed.log && parsed.log.sam) ? parsed.log.sam : [],
+        isaac: Array.isArray(parsed.log && parsed.log.isaac) ? parsed.log.isaac : [],
+        ben: Array.isArray(parsed.log && parsed.log.ben) ? parsed.log.ben : []
+      }
+    };
+  } catch (e) {
+    return {
+      kid: "sam",
+      coins: DEFAULT_COINS,
+      log: DEFAULT_LOG
+    };
+  }
+}
+
+/* ================= APP ================= */
+function App() {
+  var initial = useMemo(function () {
+    return loadState();
+  }, []);
+  var _useState = useState(initial.kid),
+    _useState2 = _slicedToArray(_useState, 2),
+    kid = _useState2[0],
+    setKid = _useState2[1];
+  var _useState3 = useState(initial.coins),
+    _useState4 = _slicedToArray(_useState3, 2),
+    coins = _useState4[0],
+    setCoins = _useState4[1];
+  var _useState5 = useState(initial.log),
+    _useState6 = _slicedToArray(_useState5, 2),
+    log = _useState6[0],
+    setLog = _useState6[1];
+  var _useState7 = useState(null),
+    _useState8 = _slicedToArray(_useState7, 2),
+    modal = _useState8[0],
+    setModal = _useState8[1]; // 'vault' | 'timer' | 'history' | 'settings'
+  var _useState9 = useState(null),
+    _useState0 = _slicedToArray(_useState9, 2),
+    timerJob = _useState0[0],
+    setTimerJob = _useState0[1];
+  var _useState1 = useState(120),
+    _useState10 = _slicedToArray(_useState1, 2),
+    secs = _useState10[0],
+    setSecs = _useState10[1];
+  var _useState11 = useState(false),
+    _useState12 = _slicedToArray(_useState11, 2),
+    running = _useState12[0],
+    setRunning = _useState12[1];
+  var _useState13 = useState(false),
+    _useState14 = _slicedToArray(_useState13, 2),
+    done = _useState14[0],
+    setDone = _useState14[1];
+  var _useState15 = useState(null),
+    _useState16 = _slicedToArray(_useState15, 2),
+    toast = _useState16[0],
+    setToast = _useState16[1];
+  var canvasRef = useRef(null);
+  var tune = useBrushingTune();
+  useEffect(function () {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        kid,
+        coins,
+        log
+      }));
+    } catch (e) {}
+  }, [kid, coins, log]);
+  var weekend = useMemo(function () {
+    var d = new Date().getDay();
+    return d === 0 || d === 6;
+  }, []);
+  var K = KIDS[kid];
+  var flash = function flash(msg) {
+    setToast(msg);
+    setTimeout(function () {
+      return setToast(null);
+    }, 1700);
+  };
+  var earn = function earn(amount, desc) {
+    setCoins(function (c) {
+      return _objectSpread(_objectSpread({}, c), {}, {
+        [kid]: c[kid] + amount
+      });
+    });
+    setLog(function (l) {
+      return _objectSpread(_objectSpread({}, l), {}, {
+        [kid]: [{
+          type: "earned",
+          amount,
+          desc,
+          when: new Date().toLocaleString("en-GB")
+        }].concat(_toConsumableArray(l[kid]))
+      });
+    });
+    flash("+" + amount + " for " + K.name + "!");
+  };
+  var spend = function spend(amount, desc) {
+    if (coins[kid] < amount) {
+      flash("Not enough coins!");
+      return;
+    }
+    setCoins(function (c) {
+      return _objectSpread(_objectSpread({}, c), {}, {
+        [kid]: c[kid] - amount
+      });
+    });
+    setLog(function (l) {
+      return _objectSpread(_objectSpread({}, l), {}, {
+        [kid]: [{
+          type: "spent",
+          amount,
+          desc,
+          when: new Date().toLocaleString("en-GB")
+        }].concat(_toConsumableArray(l[kid]))
+      });
+    });
+    flash("−" + amount + " · " + desc);
+  };
+  var undoLast = function undoLast() {
+    var entry = log[kid][0];
+    if (!entry) {
+      flash("Nothing to undo");
+      return;
+    }
+    setCoins(function (c) {
+      return _objectSpread(_objectSpread({}, c), {}, {
+        [kid]: entry.type === "earned" ? Math.max(0, c[kid] - entry.amount) : c[kid] + entry.amount
+      });
+    });
+    setLog(function (l) {
+      return _objectSpread(_objectSpread({}, l), {}, {
+        [kid]: l[kid].slice(1)
+      });
+    });
+    flash("Undid " + entry.desc);
+  };
+  var resetAll = function resetAll() {
+    setCoins({
+      sam: 0,
+      isaac: 0,
+      ben: 0
+    });
+    setLog({
+      sam: [],
+      isaac: [],
+      ben: []
+    });
+    flash("All kids reset to 0");
+    setModal(null);
+  };
+
+  /* timer */
+  var openTimer = function openTimer(job) {
+    setTimerJob(job);
+    setSecs(120);
+    setRunning(false);
+    setDone(false);
+    setModal("timer");
+  };
+  var closeTimer = function closeTimer() {
+    tune.stop();
+    setRunning(false);
+    setModal(null);
+    setTimerJob(null);
+  };
+  useEffect(function () {
+    if (!running) return;
+    if (secs <= 0) {
+      setRunning(false);
+      tune.stop();
+      tune.fanfare();
+      setDone(true);
+      earn(timerJob ? timerJob.coins : 1, timerJob ? timerJob.name + " (" + timerJob.sub + ")" : "Brush teeth");
+      return;
+    }
+    var t = setTimeout(function () {
+      return setSecs(function (s) {
+        return s - 1;
+      });
+    }, 1000);
+    return function () {
+      return clearTimeout(t);
+    };
+  }, [running, secs]);
+
+  /* coin spill canvas */
+  useEffect(function () {
+    if (modal !== "vault" || !canvasRef.current) return;
+    var cv = canvasRef.current,
+      ctx = cv.getContext("2d");
+    var W = cv.width,
+      H = cv.height,
+      target = Math.min(coins[kid], 120);
+    var parts = [],
+      frame = 0,
+      raf;
+    var make = function make() {
+      return {
+        x: W * 0.5 + (Math.random() - 0.5) * W * 0.5,
+        y: -30 - Math.random() * 60,
+        vx: (Math.random() - 0.5) * 3.4,
+        vy: Math.random() * 1.6 + 1,
+        r: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 0.22,
+        s: 13 + Math.random() * 7,
+        rest: false
+      };
+    };
+    var draw = function draw(p) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.r);
+      var sq = Math.abs(Math.cos(p.r));
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.s * Math.max(sq, 0.18), p.s, 0, 0, Math.PI * 2);
+      var g = ctx.createLinearGradient(-p.s, -p.s, p.s, p.s);
+      g.addColorStop(0, "#fff3b0");
+      g.addColorStop(.45, "#ffc42e");
+      g.addColorStop(1, "#c97a00");
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#8a5300";
+      ctx.stroke();
+      if (sq > 0.45) {
+        ctx.fillStyle = "#8a5300";
+        ctx.font = "bold " + Math.round(p.s) + "px serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("★", 0, 1);
+      }
+      ctx.restore();
+    };
+    var _loop = function loop() {
+      ctx.clearRect(0, 0, W, H);
+      if (frame % 3 === 0 && parts.length < target) parts.push(make());
+      parts.forEach(function (p) {
+        if (!p.rest) {
+          p.vy += 0.34;
+          p.x += p.vx;
+          p.y += p.vy;
+          p.r += p.vr;
+          if (p.x < p.s || p.x > W - p.s) {
+            p.vx *= -0.6;
+            p.x = Math.max(p.s, Math.min(W - p.s, p.x));
+          }
+          if (p.y > H - p.s - 4) {
+            p.y = H - p.s - 4;
+            p.vy *= -0.32;
+            p.vx *= 0.72;
+            p.vr *= 0.5;
+            if (Math.abs(p.vy) < 1.1) {
+              p.rest = true;
+              p.vy = 0;
+              p.r = Math.round(p.r / Math.PI) * Math.PI;
+            }
+          }
+        }
+        draw(p);
+      });
+      frame++;
+      raf = requestAnimationFrame(_loop);
+    };
+    _loop();
+    return function () {
+      return cancelAnimationFrame(raf);
+    };
+  }, [modal, kid, coins]);
+  var mmss = function mmss(s) {
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  };
+  var pct = 1 - secs / 120;
+
+  /* ---------- row renderers ---------- */
+  var JobRow = function JobRow(_ref3) {
+    var job = _ref3.job,
+      tone = _ref3.tone,
+      group = _ref3.group;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "row"
+    }, /*#__PURE__*/React.createElement(Slot, {
+      light: true,
+      src: IMAGES.jobs[job.id],
+      label: job.id,
+      className: "icon-slot"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "rtext"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "rname"
+    }, job.name), job.sub && /*#__PURE__*/React.createElement("div", {
+      className: "rsub"
+    }, job.sub)), job.timer && /*#__PURE__*/React.createElement("button", {
+      className: "timer-mini",
+      title: "Start 2-minute brushing timer",
+      onClick: function onClick() {
+        return openTimer(job);
+      }
+    }, "⏱️"), /*#__PURE__*/React.createElement(CoinBtn, {
+      value: job.coins,
+      tone: tone,
+      onClick: function onClick() {
+        return earn(job.coins, job.name + (job.sub ? " (" + job.sub + ")" : ""));
+      }
+    }));
+  };
+  var ShopRow = function ShopRow(_ref4) {
+    var item = _ref4.item,
+      tone = _ref4.tone,
+      locked = _ref4.locked,
+      section = _ref4.section;
+    var cant = coins[kid] < item.coins;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "row " + (locked ? "locked " : "") + (cant ? "cant" : "")
+    }, /*#__PURE__*/React.createElement(Slot, {
+      light: true,
+      src: IMAGES.shop[item.id],
+      label: item.id,
+      className: "icon-slot"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "rtext"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "rname"
+    }, item.name), item.sub && /*#__PURE__*/React.createElement("div", {
+      className: "rsub"
+    }, item.sub)), /*#__PURE__*/React.createElement(CoinBtn, {
+      value: item.coins,
+      tone: tone,
+      disabled: locked || cant,
+      onClick: function onClick() {
+        return spend(item.coins, item.name);
+      }
+    }));
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "wrap"
+  }, /*#__PURE__*/React.createElement("header", null, /*#__PURE__*/React.createElement("button", {
+    className: "cog-btn",
+    type: "button",
+    "aria-label": "Parent settings",
+    onClick: function onClick() {
+      return setModal("settings");
+    }
+  }, "⚙"), /*#__PURE__*/React.createElement("div", {
+    className: "burst"
+  }), /*#__PURE__*/React.createElement("img", {
+    className: "brand-logo",
+    src: IMAGES.logo,
+    alt: "Hero Coins"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "comic title-line1 outline-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "n-sam"
+  }, "Sam"), /*#__PURE__*/React.createElement("span", {
+    className: "n-amp"
+  }, ", "), /*#__PURE__*/React.createElement("span", {
+    className: "n-isaac"
+  }, "Isaac"), " ", /*#__PURE__*/React.createElement("span", {
+    className: "n-amp"
+  }, "&"), " ", /*#__PURE__*/React.createElement("span", {
+    className: "n-ben"
+  }, "Ben's")), /*#__PURE__*/React.createElement("div", {
+    className: "comic title-line2 outline-3"
+  }, "Coin Chart"), /*#__PURE__*/React.createElement("div", {
+    className: "ribbon bang"
+  }, "★ Earn coins. Spend or save! ★")), /*#__PURE__*/React.createElement("div", {
+    className: "hero-row"
+  }, Object.entries(KIDS).map(function (_ref5) {
+    var _ref6 = _slicedToArray(_ref5, 2),
+      key = _ref6[0],
+      k = _ref6[1];
+    return /*#__PURE__*/React.createElement("div", {
+      key: key,
+      className: "hero-card " + k.cls + (kid === key ? " active" : ""),
+      onClick: function onClick() {
+        return setKid(key);
+      }
+    }, /*#__PURE__*/React.createElement(Slot, {
+      src: IMAGES[k.img],
+      label: k.name + " photo",
+      className: "portrait"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "comic hname"
+    }, k.name, " ", k.badge), /*#__PURE__*/React.createElement("div", {
+      className: "hbal"
+    }, "🪙 ", coins[key]));
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "vault",
+    onClick: function onClick() {
+      return setModal("vault");
+    }
+  }, /*#__PURE__*/React.createElement(Slot, {
+    light: true,
+    src: IMAGES[K.img],
+    label: K.name,
+    style: {
+      width: "56px",
+      height: "56px",
+      borderRadius: "50%"
+    }
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "lbl"
+  }, K.name, "'s coin bank"), /*#__PURE__*/React.createElement("div", {
+    className: "comic big"
+  }, coins[kid])), /*#__PURE__*/React.createElement("div", {
+    className: "tap"
+  }, "Tap the lid", /*#__PURE__*/React.createElement("br", null), "to tip them out ⤵")), /*#__PURE__*/React.createElement("div", {
+    className: "cols"
+  }, /*#__PURE__*/React.createElement("section", {
+    className: "panel earn"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "panel-head"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "comic ptitle outline-2"
+  }, "How to Earn"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "1.7rem"
+    }
+  }, "🪙")), /*#__PURE__*/React.createElement("div", {
+    className: "panel-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "band gold comic"
+  }, "★ Everyday Jobs ★"), EVERYDAY_JOBS.map(function (j) {
+    return /*#__PURE__*/React.createElement(JobRow, {
+      key: j.id,
+      job: j
+    });
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "band red comic"
+  }, "★ Bonus Jobs ★"), BONUS_JOBS.map(function (j) {
+    return /*#__PURE__*/React.createElement(JobRow, {
+      key: j.id,
+      job: j
+    });
+  }))), /*#__PURE__*/React.createElement("section", {
+    className: "panel shop"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "panel-head"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "comic ptitle outline-2"
+  }, "The Shop"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "1.7rem"
+    }
+  }, "🛒")), /*#__PURE__*/React.createElement("div", {
+    className: "panel-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "band blue comic"
+  }, "★ Everyday Shop — any day ★"), EVERYDAY_SHOP.map(function (i) {
+    return /*#__PURE__*/React.createElement(ShopRow, {
+      key: i.id,
+      item: i,
+      tone: "blue"
+    });
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "band green comic"
+  }, "★ Weekend Only ★"), !weekend && /*#__PURE__*/React.createElement("div", {
+    className: "locknote"
+  }, "🔒 Locked until Saturday"), WEEKEND_SHOP.map(function (i) {
+    return /*#__PURE__*/React.createElement(ShopRow, {
+      key: i.id,
+      item: i,
+      tone: "green",
+      locked: !weekend
+    });
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "band purple comic"
+  }, "★ Special Rule ★"), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement(Slot, {
+    light: true,
+    src: IMAGES.shop.tax,
+    label: "tax",
+    className: "icon-slot"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "rtext"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "rname"
+  }, "Mum's Food Tax"), /*#__PURE__*/React.createElement("div", {
+    className: "rsub"
+  }, "Ask nicely — 2 coins per request")), /*#__PURE__*/React.createElement(CoinBtn, {
+    value: 2,
+    word: "PER REQ",
+    onClick: function onClick() {
+      return spend(2, "Mum's Food Tax");
+    },
+    disabled: coins[kid] < 2
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "band red comic"
+  }, "★ Savings Shop — weekends ★"), !weekend && /*#__PURE__*/React.createElement("div", {
+    className: "locknote"
+  }, "🔒 Big rewards open Saturday & Sunday"), SAVINGS_SHOP.map(function (i) {
+    return /*#__PURE__*/React.createElement(ShopRow, {
+      key: i.id,
+      item: i,
+      locked: !weekend
+    });
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "bottom"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "hero-art"
+  }, Object.entries(KIDS).map(function (_ref7) {
+    var _ref8 = _slicedToArray(_ref7, 2),
+      key = _ref8[0],
+      k = _ref8[1];
+    return /*#__PURE__*/React.createElement("div", {
+      key: key,
+      onClick: function onClick() {
+        return setKid(key);
+      },
+      style: {
+        cursor: "pointer"
+      }
+    }, /*#__PURE__*/React.createElement(Slot, {
+      src: IMAGES[k.img],
+      label: k.name + " hero art",
+      className: "big-slot"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "comic cap",
+      style: {
+        color: k.colour
+      }
+    }, k.name, " ", k.badge));
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "rules"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "comic"
+  }, "★ The Rules ★"), /*#__PURE__*/React.createElement("div", {
+    className: "rule"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "num"
+  }, "1"), /*#__PURE__*/React.createElement("span", null, "Do the job ➜ get your coins")), /*#__PURE__*/React.createElement("div", {
+    className: "rule"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "num"
+  }, "2"), /*#__PURE__*/React.createElement("span", null, "Payday every day 🪙 — Shop Day is ", /*#__PURE__*/React.createElement("b", null, "Saturday"))), /*#__PURE__*/React.createElement("div", {
+    className: "rule"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "num"
+  }, "3"), /*#__PURE__*/React.createElement("span", null, "Spend now or save up for something bigger — your choice!")), /*#__PURE__*/React.createElement("button", {
+    className: "btn tax",
+    onClick: function onClick() {
+      return spend(2, "Mum's Food Tax");
+    }
+  }, "🍽️ Mum's Food Tax −2"), /*#__PURE__*/React.createElement("button", {
+    className: "btn hist",
+    onClick: function onClick() {
+      return setModal("history");
+    }
+  }, "📋 ", K.name, "'s History"))), /*#__PURE__*/React.createElement("div", {
+    className: "footer-strip comic"
+  }, "★ Be a hero. Make good choices. Reach your goals! ★"), modal === "vault" && /*#__PURE__*/React.createElement("div", {
+    className: "modal",
+    onClick: function onClick() {
+      return setModal(null);
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet",
+    onClick: function onClick(e) {
+      return e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-head",
+    style: {
+      background: K.colour
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic outline-2"
+  }, K.name, "'s Coins")), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-body"
+  }, /*#__PURE__*/React.createElement("canvas", {
+    id: "coinCanvas",
+    ref: canvasRef,
+    width: "460",
+    height: "340"
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      marginTop: "10px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "comic",
+    style: {
+      fontSize: "3.4rem",
+      color: "var(--red-dark)"
+    }
+  }, coins[kid]), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 900,
+      letterSpacing: "1px"
+    }
+  }, "COINS IN THE BANK")), /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    onClick: function onClick() {
+      return setModal(null);
+    }
+  }, "Close")))), modal === "timer" && /*#__PURE__*/React.createElement("div", {
+    className: "modal"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet",
+    onClick: function onClick(e) {
+      return e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-head",
+    style: {
+      background: "var(--green)"
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic outline-2"
+  }, "🪥 Brushing Time")), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-body"
+  }, done ? /*#__PURE__*/React.createElement("div", {
+    className: "celebrate"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "spin",
+    style: {
+      fontSize: "3.5rem"
+    }
+  }, "🪙"), /*#__PURE__*/React.createElement("div", {
+    className: "comic pop"
+  }, "Well done, ", K.name, "!"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 900,
+      marginTop: "6px"
+    }
+  }, "You earned 1 coin ⭐"), /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    onClick: closeTimer
+  }, "Brilliant!")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("svg", {
+    className: "timer-ring",
+    width: "180",
+    height: "180",
+    viewBox: "0 0 120 120"
+  }, /*#__PURE__*/React.createElement("circle", {
+    cx: "60",
+    cy: "60",
+    r: "52",
+    fill: "none",
+    stroke: "#00000022",
+    strokeWidth: "12"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "60",
+    cy: "60",
+    r: "52",
+    fill: "none",
+    stroke: "#1a7a34",
+    strokeWidth: "12",
+    strokeLinecap: "round",
+    strokeDasharray: 2 * Math.PI * 52,
+    strokeDashoffset: 2 * Math.PI * 52 * (1 - pct),
+    transform: "rotate(-90 60 60)"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "timer-num"
+  }, mmss(secs)), /*#__PURE__*/React.createElement("div", {
+    className: "brush-tip"
+  }, running ? "Keep going — top, bottom, all the way round! 🎵" : "Press start, then brush for two whole minutes."), !running ? /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    onClick: function onClick() {
+      setRunning(true);
+      tune.start();
+    }
+  }, "▶ Start brushing") : /*#__PURE__*/React.createElement("button", {
+    className: "btn stop",
+    onClick: function onClick() {
+      tune.stop();
+      setRunning(false);
+    }
+  }, "⏸ Pause"), /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    onClick: closeTimer
+  }, "Cancel"))))), modal === "history" && /*#__PURE__*/React.createElement("div", {
+    className: "modal",
+    onClick: function onClick() {
+      return setModal(null);
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet",
+    onClick: function onClick(e) {
+      return e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-head",
+    style: {
+      background: "var(--blue-dark)"
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic outline-2"
+  }, "📋 ", K.name, "'s History")), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-body"
+  }, log[kid].length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      padding: "26px",
+      fontWeight: 800,
+      color: "#777"
+    }
+  }, "Nothing logged yet today.") : log[kid].map(function (e, i) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: "hist-item " + e.type
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "hdesc"
+    }, e.desc), /*#__PURE__*/React.createElement("div", {
+      className: "htime"
+    }, e.when)), /*#__PURE__*/React.createElement("div", {
+      className: "hamt"
+    }, e.type === "earned" ? "+" : "−", e.amount));
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    onClick: function onClick() {
+      return setModal(null);
+    }
+  }, "Close")))), modal === "settings" && /*#__PURE__*/React.createElement("div", {
+    className: "modal",
+    onClick: function onClick() {
+      return setModal(null);
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet",
+    onClick: function onClick(e) {
+      return e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-head",
+    style: {
+      background: "var(--navy)"
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic outline-2"
+  }, "⚙ Parent Settings")), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-note"
+  }, "For Mum & Dad — undo mistakes or start fresh."), /*#__PURE__*/React.createElement("div", {
+    className: "settings-bal"
+  }, K.name, ": 🪙 ", coins[kid], log[kid][0] ? " · last: " + (log[kid][0].type === "earned" ? "+" : "−") + log[kid][0].amount + " " + log[kid][0].desc : " · no history"), /*#__PURE__*/React.createElement("button", {
+    className: "btn undo",
+    onClick: undoLast,
+    disabled: !log[kid].length
+  }, "↩ Undo last for ", K.name), /*#__PURE__*/React.createElement("button", {
+    className: "btn stop",
+    onClick: resetAll
+  }, "Reset all kids to 0"), /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    onClick: function onClick() {
+      return setModal(null);
+    }
+  }, "Close")))), toast && /*#__PURE__*/React.createElement("div", {
+    className: "toast"
+  }, toast));
+}
+ReactDOM.render(/*#__PURE__*/React.createElement(App, null), document.getElementById("root"));
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  });
+}

@@ -4,7 +4,27 @@
   "version": "1.0.0",
   "description": "Sam, Isaac & Ben's Coin Chart — kids rewards PWA",
   "scripts": {
+    "build": "babel src/app.jsx -o app.js",
     "dev": "npx --yes serve -l 4173",
     "start": "npx --yes serve -l 4173"
+  },
+  "main": "sw.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/richiemccolm-creator/mccolm-coin-chart.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/richiemccolm-creator/mccolm-coin-chart/issues"
+  },
+  "homepage": "https://github.com/richiemccolm-creator/mccolm-coin-chart#readme",
+  "devDependencies": {
+    "@babel/cli": "^8.0.4",
+    "@babel/core": "^8.0.1",
+    "@babel/preset-env": "^8.0.2",
+    "@babel/preset-react": "^8.0.1"
   }
 }
