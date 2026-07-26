@@ -232,11 +232,23 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   box-shadow:0 5px 0 rgba(0,0,0,.75);margin-top:8px;text-transform:uppercase;
 }
 .btn:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(0,0,0,.75)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:0 5px 0 rgba(0,0,0,.35)}
 .btn.go{background:var(--green)}
 .btn.stop{background:var(--red)}
 .btn.close{background:#333}
 .btn.tax{background:linear-gradient(160deg,#ff9d2e,#d62828)}
 .btn.hist{background:var(--blue-dark)}
+.btn.settings{background:var(--navy)}
+.btn.undo{background:var(--blue)}
+.cog-btn{
+  position:absolute;top:10px;right:10px;z-index:5;
+  width:44px;height:44px;border:3px solid #000;border-radius:50%;
+  background:var(--cream);cursor:pointer;font-size:1.35rem;line-height:1;
+  box-shadow:0 4px 0 rgba(0,0,0,.55);display:grid;place-items:center;padding:0;
+}
+.cog-btn:active{transform:translateY(2px);box-shadow:0 2px 0 rgba(0,0,0,.55)}
+.settings-note{text-align:center;font-weight:800;color:#555;font-size:.92rem;margin:4px 0 10px}
+.settings-bal{text-align:center;font-weight:900;font-size:1.05rem;margin-bottom:8px}
 
 #coinCanvas{width:100%;height:auto;background:radial-gradient(circle at 50% 30%,#123a8f,#04113d);border:3px solid #000;border-radius:12px;display:block}
 
@@ -398,8 +410,8 @@ function useBrushingTune(){
 }
 
 /* ---------- local persistence (Supabase sync can replace this later) ---------- */
-const STORAGE_KEY = "coin-chart-v1";
-const DEFAULT_COINS = {sam:45,isaac:62,ben:28};
+const STORAGE_KEY = "coin-chart-v2";
+const DEFAULT_COINS = {sam:0,isaac:0,ben:0};
 const DEFAULT_LOG = {sam:[],isaac:[],ben:[]};
 function loadState(){
   try{
@@ -426,7 +438,7 @@ function App(){
   const [kid,setKid] = useState(initial.kid);
   const [coins,setCoins] = useState(initial.coins);
   const [log,setLog] = useState(initial.log);
-  const [modal,setModal] = useState(null);          // 'vault' | 'timer' | 'history'
+  const [modal,setModal] = useState(null);          // 'vault' | 'timer' | 'history' | 'settings'
   const [timerJob,setTimerJob] = useState(null);
   const [secs,setSecs] = useState(120);
   const [running,setRunning] = useState(false);
@@ -456,6 +468,24 @@ function App(){
     setCoins(c=>({...c,[kid]:c[kid]-amount}));
     setLog(l=>({...l,[kid]:[{type:"spent",amount,desc,when:new Date().toLocaleString("en-GB")},...l[kid]]}));
     flash("−"+amount+" · "+desc);
+  };
+
+  const undoLast = ()=>{
+    const entry = log[kid][0];
+    if(!entry){ flash("Nothing to undo"); return; }
+    setCoins(c=>({
+      ...c,
+      [kid]: entry.type==="earned" ? Math.max(0, c[kid]-entry.amount) : c[kid]+entry.amount
+    }));
+    setLog(l=>({...l,[kid]:l[kid].slice(1)}));
+    flash("Undid "+entry.desc);
+  };
+
+  const resetAll = ()=>{
+    setCoins({sam:0,isaac:0,ben:0});
+    setLog({sam:[],isaac:[],ben:[]});
+    flash("All kids reset to 0");
+    setModal(null);
   };
 
   /* timer */
@@ -546,6 +576,7 @@ function App(){
 
       {/* ---------------- HEADER ---------------- */}
       <header>
+        <button className="cog-btn" type="button" aria-label="Parent settings" onClick={()=>setModal("settings")}>⚙</button>
         <div className="burst"></div>
         <img className="brand-logo" src={IMAGES.logo} alt="Hero Coins"/>
         <div className="comic title-line1 outline-2">
@@ -726,6 +757,27 @@ function App(){
                       <div className="hamt">{e.type==="earned"?"+":"−"}{e.amount}</div>
                     </div>
                   ))}
+              <button className="btn close" onClick={()=>setModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- PARENT SETTINGS ---------------- */}
+      {modal==="settings" && (
+        <div className="modal" onClick={()=>setModal(null)}>
+          <div className="sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-head" style={{background:"var(--navy)"}}>
+              <h2 className="comic outline-2">⚙ Parent Settings</h2>
+            </div>
+            <div className="sheet-body">
+              <div className="settings-note">For Mum &amp; Dad — undo mistakes or start fresh.</div>
+              <div className="settings-bal">
+                {K.name}: 🪙 {coins[kid]}
+                {log[kid][0] ? " · last: "+(log[kid][0].type==="earned"?"+":"−")+log[kid][0].amount+" "+log[kid][0].desc : " · no history"}
+              </div>
+              <button className="btn undo" onClick={undoLast} disabled={!log[kid].length}>↩ Undo last for {K.name}</button>
+              <button className="btn stop" onClick={resetAll}>Reset all kids to 0</button>
               <button className="btn close" onClick={()=>setModal(null)}>Close</button>
             </div>
           </div>

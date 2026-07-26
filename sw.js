@@ -1,5 +1,5 @@
 /* Coin Chart — offline shell cache */
-const CACHE = "coin-chart-v7";
+const CACHE = "coin-chart-v8";
 const ASSETS = [
   "/",
   "/index.html",
