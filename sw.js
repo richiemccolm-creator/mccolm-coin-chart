@@ -1,5 +1,5 @@
 /* Coin Chart — offline shell cache */
-const CACHE = "coin-chart-v5";
+const CACHE = "coin-chart-v6";
 const ASSETS = [
   "/",
   "/index.html",
@@ -8,6 +8,7 @@ const ASSETS = [
   "/img/sam.png",
   "/img/isaac.png",
   "/img/ben.png",
+  "/img/brush.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png",
