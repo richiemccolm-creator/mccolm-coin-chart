@@ -4,8 +4,9 @@
   "version": "1.0.0",
   "description": "Sam, Isaac & Ben's Coin Chart — kids rewards PWA",
   "scripts": {
-    "build": "babel src/app.jsx -o app.js",
-    "dev": "npx --yes serve -l 4173",
+    "build": "node scripts/write-config.js && babel src/app.jsx -o app.js",
+    "config": "node scripts/write-config.js",
+    "dev": "npm run build && npx --yes serve -l 4173",
     "start": "npx --yes serve -l 4173"
   },
   "main": "sw.js",

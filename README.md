@@ -40,9 +40,36 @@ NEXT_PUBLIC_COIN_CHART_URL=https://coins.yourdomain.com
 
 Redeploy The Ledger so the home-screen button opens Coin Chart.
 
-## Same Supabase project (later)
+## Same Supabase project as The Ledger
 
-Use The Ledger’s Supabase project URL + anon key. Keep Coin Chart data in its own tables (`coin_*`), no budget FKs. Until then, balances persist in **localStorage** on each device.
+Coin Chart shares The Ledger’s Supabase project. Schema lives in `coin_*` tables only — **no foreign keys** into budget/`households` tables. The app syncs earn/spend/undo/reset over the anon key; localStorage stays as an offline cache.
+
+| Path | Purpose |
+|---|---|
+| `supabase/migrations/20260726194500_coin_chart.sql` | Migration (CLI / `db push`) |
+| `coin-chart-sync.sql` | Same SQL for Supabase → SQL Editor paste |
+
+### 1. Apply the schema (once)
+
+Paste `coin-chart-sync.sql` into the shared project’s SQL Editor and Run  
+(or copy the migration into The Ledger’s `supabase/migrations/` and `npx supabase db push`).
+
+| Table | Maps from app state |
+|---|---|
+| `coin_kids` | Sam / Isaac / Ben + `coins[slug]` balance |
+| `coin_transactions` | `log[slug][]` earn/spend entries |
+
+### 2. Env keys (same URL + anon key as The Ledger)
+
+```bash
+cp .env.example .env.local
+# fill NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY
+npm run build   # writes config.js + app.js
+```
+
+On Vercel (Coin Chart project): set the same two `NEXT_PUBLIC_SUPABASE_*` vars, then redeploy. Build runs `scripts/write-config.js` so `config.js` gets the keys.
+
+Parent Settings shows sync status (Shared / Offline / This device only). If the cloud is empty and this device already has coins, the first successful connect uploads local data once.
 
 ## Add to Home Screen
 

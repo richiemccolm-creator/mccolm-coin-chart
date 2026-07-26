@@ -1,9 +1,10 @@
 /* Coin Chart — offline shell cache */
-var CACHE = "coin-chart-v10";
+var CACHE = "coin-chart-v11";
 var ASSETS = [
   "/",
   "/index.html",
   "/app.js",
+  "/config.js",
   "/vendor/react.production.min.js",
   "/vendor/react-dom.production.min.js",
   "/manifest.webmanifest",
@@ -50,23 +51,31 @@ self.addEventListener("activate", function (event) {
 });
 
 self.addEventListener("fetch", function (event) {
-  if (event.request.method !== "GET") return;
+  var req = event.request;
+  if (req.method !== "GET") return;
+
+  // Always network-first for config so env/key updates land
+  var url = new URL(req.url);
+  if (url.pathname === "/config.js" || url.pathname === "/app.js" || url.pathname === "/sw.js") {
+    event.respondWith(
+      fetch(req).then(function (res) {
+        var copy = res.clone();
+        caches.open(CACHE).then(function (cache) { cache.put(req, copy); });
+        return res;
+      }).catch(function () {
+        return caches.match(req);
+      })
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      var fetched = fetch(event.request)
-        .then(function (res) {
-          if (res && res.status === 200) {
-            var copy = res.clone();
-            caches.open(CACHE).then(function (cache) {
-              cache.put(event.request, copy);
-            });
-          }
-          return res;
-        })
-        .catch(function () {
-          return cached;
-        });
-      return cached || fetched;
+    caches.match(req).then(function (cached) {
+      return cached || fetch(req).then(function (res) {
+        var copy = res.clone();
+        caches.open(CACHE).then(function (cache) { cache.put(req, copy); });
+        return res;
+      });
     })
   );
 });

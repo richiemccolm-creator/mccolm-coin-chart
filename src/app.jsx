@@ -184,18 +184,21 @@ function useBrushingTune(){
   return {start,stop,fanfare};
 }
 
-/* ---------- local persistence (Supabase sync can replace this later) ---------- */
+/* ---------- persistence: localStorage cache + shared Supabase project ---------- */
 const STORAGE_KEY = "coin-chart-v2";
 const DEFAULT_COINS = {sam:0,isaac:0,ben:0};
 const DEFAULT_LOG = {sam:[],isaac:[],ben:[]};
+
+function emptyLog(){ return {sam:[],isaac:[],ben:[]}; }
+
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return {kid:"sam", coins:DEFAULT_COINS, log:DEFAULT_LOG};
+    if(!raw) return {kid:"sam", coins:Object.assign({}, DEFAULT_COINS), log:emptyLog()};
     const parsed = JSON.parse(raw);
     return {
       kid: parsed.kid && KIDS[parsed.kid] ? parsed.kid : "sam",
-      coins: {...DEFAULT_COINS, ...(parsed.coins||{})},
+      coins: Object.assign({}, DEFAULT_COINS, parsed.coins||{}),
       log: {
         sam: Array.isArray(parsed.log && parsed.log.sam) ? parsed.log.sam : [],
         isaac: Array.isArray(parsed.log && parsed.log.isaac) ? parsed.log.isaac : [],
@@ -203,13 +206,59 @@ function loadState(){
       }
     };
   }catch(e){
-    return {kid:"sam", coins:DEFAULT_COINS, log:DEFAULT_LOG};
+    return {kid:"sam", coins:Object.assign({}, DEFAULT_COINS), log:emptyLog()};
   }
+}
+
+function getSbConfig(){
+  const c = window.COIN_CHART_CONFIG || {};
+  return {
+    url: String(c.supabaseUrl || "").replace(/\/$/, ""),
+    key: String(c.supabaseAnonKey || "")
+  };
+}
+function supabaseReady(){
+  const c = getSbConfig();
+  return !!(c.url && c.key && typeof fetch === "function");
+}
+function sbHeaders(extra){
+  const c = getSbConfig();
+  const h = {
+    apikey: c.key,
+    Authorization: "Bearer " + c.key,
+    "Content-Type": "application/json"
+  };
+  if(extra) Object.assign(h, extra);
+  return h;
+}
+function sbFetch(path, opts){
+  const c = getSbConfig();
+  return fetch(c.url + "/rest/v1/" + path, opts).then(function(res){
+    if(!res.ok){
+      return res.text().then(function(t){
+        throw new Error(res.status + " " + (t || res.statusText));
+      });
+    }
+    if(res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    if(ct.indexOf("json") >= 0) return res.json();
+    return null;
+  });
+}
+function formatWhen(iso){
+  try{ return new Date(iso).toLocaleString("en-GB"); }
+  catch(e){ return String(iso || ""); }
+}
+function totalCoins(coins){
+  return (coins.sam||0) + (coins.isaac||0) + (coins.ben||0);
+}
+function logCount(log){
+  return (log.sam||[]).length + (log.isaac||[]).length + (log.ben||[]).length;
 }
 
 /* ================= APP ================= */
 function App(){
-  const initial = useMemo(()=>loadState(),[]);
+  const initial = useMemo(function(){ return loadState(); },[]);
   const [kid,setKid] = useState(initial.kid);
   const [coins,setCoins] = useState(initial.coins);
   const [log,setLog] = useState(initial.log);
@@ -219,48 +268,281 @@ function App(){
   const [running,setRunning] = useState(false);
   const [done,setDone] = useState(false);
   const [toast,setToast] = useState(null);
+  const [cloud,setCloud] = useState(supabaseReady() ? "syncing" : "local");
   const canvasRef = useRef(null);
+  const kidIdsRef = useRef({});
+  const hydratedRef = useRef(false);
   const tune = useBrushingTune();
 
-  useEffect(()=>{
+  useEffect(function(){
     try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({kid, coins, log}));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({kid:kid, coins:coins, log:log}));
     }catch(e){}
   },[kid,coins,log]);
 
-  const weekend = useMemo(()=>{const d=new Date().getDay();return d===0||d===6;},[]);
+  useEffect(function(){
+    if(!supabaseReady() || hydratedRef.current) return;
+    hydratedRef.current = true;
+    const localSnap = loadState();
+
+    Promise.all([
+      sbFetch("coin_kids?select=id,slug,balance&order=sort_order.asc", {headers: sbHeaders()}),
+      sbFetch(
+        "coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc",
+        {headers: sbHeaders()}
+      )
+    ]).then(function(results){
+      const kids = results[0] || [];
+      const txs = results[1] || [];
+      const ids = {};
+      const remoteCoins = Object.assign({}, DEFAULT_COINS);
+      kids.forEach(function(row){
+        if(KIDS[row.slug]){
+          ids[row.slug] = row.id;
+          remoteCoins[row.slug] = Number(row.balance) || 0;
+        }
+      });
+      kidIdsRef.current = ids;
+
+      const idToSlug = {};
+      Object.keys(ids).forEach(function(slug){ idToSlug[ids[slug]] = slug; });
+
+      const remoteLog = emptyLog();
+      txs.forEach(function(tx){
+        const slug = idToSlug[tx.kid_id];
+        if(!slug) return;
+        remoteLog[slug].push({
+          id: tx.id,
+          type: tx.entry_type,
+          amount: Number(tx.amount) || 0,
+          desc: tx.description,
+          when: formatWhen(tx.created_at)
+        });
+      });
+
+      const remoteEmpty = totalCoins(remoteCoins) === 0 && logCount(remoteLog) === 0;
+      const localHasData = totalCoins(localSnap.coins) > 0 || logCount(localSnap.log) > 0;
+
+      if(remoteEmpty && localHasData && Object.keys(ids).length){
+        return pushLocalToCloud(localSnap.coins, localSnap.log, ids).then(function(mappedLog){
+          setCoins(localSnap.coins);
+          setLog(mappedLog || localSnap.log);
+          setCloud("online");
+        });
+      }
+
+      setCoins(remoteCoins);
+      setLog(remoteLog);
+      setCloud("online");
+    }).catch(function(){
+      setCloud("offline");
+    });
+  },[]);
+
+  function pushLocalToCloud(localCoins, localLog, ids){
+    const patches = Object.keys(KIDS).map(function(slug){
+      if(!ids[slug]) return Promise.resolve();
+      return sbFetch("coin_kids?slug=eq."+encodeURIComponent(slug), {
+        method: "PATCH",
+        headers: sbHeaders({"Prefer":"return=minimal"}),
+        body: JSON.stringify({
+          balance: localCoins[slug] || 0,
+          updated_at: new Date().toISOString()
+        })
+      });
+    });
+
+    const inserts = [];
+    Object.keys(KIDS).forEach(function(slug){
+      const kidId = ids[slug];
+      if(!kidId) return;
+      const entries = (localLog[slug] || []).slice().reverse();
+      entries.forEach(function(entry){
+        inserts.push({
+          slug: slug,
+          body: {
+            kid_id: kidId,
+            entry_type: entry.type === "spent" ? "spent" : "earned",
+            amount: entry.amount,
+            description: entry.desc || "",
+            created_at: entry.when ? undefined : new Date().toISOString()
+          }
+        });
+      });
+    });
+
+    return Promise.all(patches).then(function(){
+      if(!inserts.length) return localLog;
+      return sbFetch("coin_transactions", {
+        method: "POST",
+        headers: sbHeaders({"Prefer":"return=representation"}),
+        body: JSON.stringify(inserts.map(function(i){ return i.body; }))
+      }).then(function(rows){
+        const mapped = emptyLog();
+        const list = rows || [];
+        for(var i = list.length - 1; i >= 0; i--){
+          const tx = list[i];
+          const slug = Object.keys(ids).filter(function(s){ return ids[s] === tx.kid_id; })[0];
+          if(!slug) continue;
+          mapped[slug].push({
+            id: tx.id,
+            type: tx.entry_type,
+            amount: Number(tx.amount) || 0,
+            desc: tx.description,
+            when: formatWhen(tx.created_at)
+          });
+        }
+        return mapped;
+      });
+    });
+  }
+
+  function syncBalance(slug, balance){
+    if(!supabaseReady() || !kidIdsRef.current[slug]) return Promise.resolve();
+    return sbFetch("coin_kids?slug=eq."+encodeURIComponent(slug), {
+      method: "PATCH",
+      headers: sbHeaders({"Prefer":"return=minimal"}),
+      body: JSON.stringify({balance: balance, updated_at: new Date().toISOString()})
+    });
+  }
+
+  function syncInsertTx(slug, entryType, amount, desc){
+    const kidId = kidIdsRef.current[slug];
+    if(!supabaseReady() || !kidId) return Promise.resolve(null);
+    return sbFetch("coin_transactions", {
+      method: "POST",
+      headers: sbHeaders({"Prefer":"return=representation"}),
+      body: JSON.stringify({
+        kid_id: kidId,
+        entry_type: entryType,
+        amount: amount,
+        description: desc
+      })
+    }).then(function(rows){
+      return rows && rows[0] ? rows[0] : null;
+    });
+  }
+
+  const weekend = useMemo(function(){const d=new Date().getDay();return d===0||d===6;},[]);
   const K = KIDS[kid];
 
-  const flash = (msg)=>{setToast(msg);setTimeout(()=>setToast(null),1700);};
+  const flash = function(msg){setToast(msg);setTimeout(function(){setToast(null);},1700);};
 
-  const earn = (amount,desc)=>{
-    setCoins(c=>({...c,[kid]:c[kid]+amount}));
-    setLog(l=>({...l,[kid]:[{type:"earned",amount,desc,when:new Date().toLocaleString("en-GB")},...l[kid]]}));
+  const earn = function(amount,desc){
+    const when = new Date().toLocaleString("en-GB");
+    const tempId = "local-"+Date.now();
+    const entry = {id:tempId, type:"earned", amount:amount, desc:desc, when:when};
+    setCoins(function(c){
+      const next = Object.assign({}, c);
+      next[kid] = (c[kid]||0) + amount;
+      return next;
+    });
+    setLog(function(l){
+      const next = Object.assign({}, l);
+      next[kid] = [entry].concat(l[kid]||[]);
+      return next;
+    });
     flash("+"+amount+" for "+K.name+"!");
-  };
-  const spend = (amount,desc)=>{
-    if(coins[kid] < amount){ flash("Not enough coins!"); return; }
-    setCoins(c=>({...c,[kid]:c[kid]-amount}));
-    setLog(l=>({...l,[kid]:[{type:"spent",amount,desc,when:new Date().toLocaleString("en-GB")},...l[kid]]}));
-    flash("−"+amount+" · "+desc);
+
+    const newBal = (coins[kid]||0) + amount;
+    Promise.all([
+      syncInsertTx(kid, "earned", amount, desc),
+      syncBalance(kid, newBal)
+    ]).then(function(results){
+      const row = results[0];
+      if(!row || !row.id) return;
+      setLog(function(l){
+        const next = Object.assign({}, l);
+        next[kid] = (l[kid]||[]).map(function(e){
+          return e.id === tempId ? Object.assign({}, e, {id: row.id, when: formatWhen(row.created_at) || e.when}) : e;
+        });
+        return next;
+      });
+      setCloud("online");
+    }).catch(function(){ setCloud("offline"); });
   };
 
-  const undoLast = ()=>{
+  const spend = function(amount,desc){
+    if(coins[kid] < amount){ flash("Not enough coins!"); return; }
+    const when = new Date().toLocaleString("en-GB");
+    const tempId = "local-"+Date.now();
+    const entry = {id:tempId, type:"spent", amount:amount, desc:desc, when:when};
+    setCoins(function(c){
+      const next = Object.assign({}, c);
+      next[kid] = (c[kid]||0) - amount;
+      return next;
+    });
+    setLog(function(l){
+      const next = Object.assign({}, l);
+      next[kid] = [entry].concat(l[kid]||[]);
+      return next;
+    });
+    flash("−"+amount+" · "+desc);
+
+    const newBal = (coins[kid]||0) - amount;
+    Promise.all([
+      syncInsertTx(kid, "spent", amount, desc),
+      syncBalance(kid, newBal)
+    ]).then(function(results){
+      const row = results[0];
+      if(!row || !row.id) return;
+      setLog(function(l){
+        const next = Object.assign({}, l);
+        next[kid] = (l[kid]||[]).map(function(e){
+          return e.id === tempId ? Object.assign({}, e, {id: row.id, when: formatWhen(row.created_at) || e.when}) : e;
+        });
+        return next;
+      });
+      setCloud("online");
+    }).catch(function(){ setCloud("offline"); });
+  };
+
+  const undoLast = function(){
     const entry = log[kid][0];
     if(!entry){ flash("Nothing to undo"); return; }
-    setCoins(c=>({
-      ...c,
-      [kid]: entry.type==="earned" ? Math.max(0, c[kid]-entry.amount) : c[kid]+entry.amount
-    }));
-    setLog(l=>({...l,[kid]:l[kid].slice(1)}));
+    const newBal = entry.type==="earned"
+      ? Math.max(0, (coins[kid]||0) - entry.amount)
+      : (coins[kid]||0) + entry.amount;
+    setCoins(function(c){
+      const next = Object.assign({}, c);
+      next[kid] = newBal;
+      return next;
+    });
+    setLog(function(l){
+      const next = Object.assign({}, l);
+      next[kid] = (l[kid]||[]).slice(1);
+      return next;
+    });
     flash("Undid "+entry.desc);
+
+    const remoteId = entry.id && String(entry.id).indexOf("local-") !== 0 ? entry.id : null;
+    const tasks = [syncBalance(kid, newBal)];
+    if(remoteId && supabaseReady()){
+      tasks.push(sbFetch("coin_transactions?id=eq."+encodeURIComponent(remoteId), {
+        method: "DELETE",
+        headers: sbHeaders({"Prefer":"return=minimal"})
+      }));
+    }
+    Promise.all(tasks).then(function(){ setCloud("online"); }).catch(function(){ setCloud("offline"); });
   };
 
-  const resetAll = ()=>{
+  const resetAll = function(){
     setCoins({sam:0,isaac:0,ben:0});
-    setLog({sam:[],isaac:[],ben:[]});
+    setLog(emptyLog());
     flash("All kids reset to 0");
     setModal(null);
+
+    if(!supabaseReady()) return;
+    const ids = kidIdsRef.current;
+    const idList = Object.keys(KIDS).map(function(s){ return ids[s]; }).filter(Boolean);
+    const tasks = Object.keys(KIDS).map(function(slug){ return syncBalance(slug, 0); });
+    if(idList.length){
+      tasks.push(sbFetch("coin_transactions?kid_id=in.("+idList.join(",")+")", {
+        method: "DELETE",
+        headers: sbHeaders({"Prefer":"return=minimal"})
+      }));
+    }
+    Promise.all(tasks).then(function(){ setCloud("online"); }).catch(function(){ setCloud("offline"); });
   };
 
   /* timer */
@@ -550,6 +832,9 @@ function App(){
               <div className="settings-bal">
                 {K.name}: 🪙 {coins[kid]}
                 {log[kid][0] ? " · last: "+(log[kid][0].type==="earned"?"+":"−")+log[kid][0].amount+" "+log[kid][0].desc : " · no history"}
+              </div>
+              <div className="settings-note" style={{marginTop:"8px"}}>
+                Sync: {cloud==="online" ? "☁ Shared (Supabase)" : cloud==="syncing" ? "☁ Connecting…" : cloud==="offline" ? "⚠ Offline — this device only" : "📱 This device only"}
               </div>
               <button className="btn undo" onClick={undoLast} disabled={!log[kid].length}>↩ Undo last for {K.name}</button>
               <button className="btn stop" onClick={resetAll}>Reset all kids to 0</button>
