@@ -78,7 +78,7 @@ const IMAGES = {
     "kind":"/img/kind.png"
   },
   shop: {
-    "tv":"", "snack":"", "movie":"", "switch15":"", "switch30":"", "tax":"",
+    "tv":"", "screentime":"", "snack":"", "movie":"", "switch15":"", "switch30":"", "tax":"",
     "toy-small":"", "park":"", "late":"", "dayout":"", "toy-big":"", "cinema":""
   }
 };
@@ -104,13 +104,14 @@ const BONUS_JOBS = [
   {id:"kind", name:"Be kind & helpful",         coins:2}
 ];
 const EVERYDAY_SHOP = [
-  {id:"tv",    name:"Breakfast TV",      sub:"15 minutes",     coins:1},
-  {id:"snack", name:"Choose a special snack",                  coins:5},
-  {id:"movie", name:"Friday Movie Night", sub:"pick the film", coins:5}
+  {id:"tv",         name:"Breakfast TV",      sub:"15 minutes",     coins:1},
+  {id:"screentime", name:"Screen Time",       sub:"30 minutes",     coins:1},
+  {id:"snack",      name:"Choose a special snack",                  coins:5},
+  {id:"movie",      name:"Friday Movie Night", sub:"pick the film", coins:5}
 ];
 const WEEKEND_SHOP = [
-  {id:"switch15", name:"Screen Time", sub:"15 minutes", coins:3},
-  {id:"switch30", name:"Screen Time", sub:"30 minutes", coins:5}
+  {id:"switch15", name:"Nintendo Switch", sub:"15 minutes", coins:3},
+  {id:"switch30", name:"Nintendo Switch", sub:"30 minutes", coins:5}
 ];
 const SAVINGS_SHOP = [
   {id:"toy-small", name:"Small toy",        coins:50},

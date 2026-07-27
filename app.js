@@ -89,6 +89,7 @@ var IMAGES = {
   },
   shop: {
     "tv": "",
+    "screentime": "",
     "snack": "",
     "movie": "",
     "switch15": "",
@@ -175,6 +176,11 @@ var EVERYDAY_SHOP = [{
   sub: "15 minutes",
   coins: 1
 }, {
+  id: "screentime",
+  name: "Screen Time",
+  sub: "30 minutes",
+  coins: 1
+}, {
   id: "snack",
   name: "Choose a special snack",
   coins: 5
@@ -186,12 +192,12 @@ var EVERYDAY_SHOP = [{
 }];
 var WEEKEND_SHOP = [{
   id: "switch15",
-  name: "Screen Time",
+  name: "Nintendo Switch",
   sub: "15 minutes",
   coins: 3
 }, {
   id: "switch30",
-  name: "Screen Time",
+  name: "Nintendo Switch",
   sub: "30 minutes",
   coins: 5
 }];
