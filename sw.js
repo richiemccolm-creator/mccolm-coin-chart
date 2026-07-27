@@ -1,5 +1,5 @@
 /* Coin Chart — offline shell cache */
-var CACHE = "coin-chart-v11";
+var CACHE = "coin-chart-v12";
 var ASSETS = [
   "/",
   "/index.html",
@@ -54,16 +54,26 @@ self.addEventListener("fetch", function (event) {
   var req = event.request;
   if (req.method !== "GET") return;
 
-  // Always network-first for config so env/key updates land
+  // Network-first for shell/script so deploys show up on installed PWAs
   var url = new URL(req.url);
-  if (url.pathname === "/config.js" || url.pathname === "/app.js" || url.pathname === "/sw.js") {
+  var networkFirst =
+    url.pathname === "/" ||
+    url.pathname === "/index.html" ||
+    url.pathname === "/config.js" ||
+    url.pathname === "/app.js" ||
+    url.pathname === "/sw.js" ||
+    req.mode === "navigate";
+
+  if (networkFirst) {
     event.respondWith(
       fetch(req).then(function (res) {
         var copy = res.clone();
         caches.open(CACHE).then(function (cache) { cache.put(req, copy); });
         return res;
       }).catch(function () {
-        return caches.match(req);
+        return caches.match(req).then(function (cached) {
+          return cached || caches.match("/index.html");
+        });
       })
     );
     return;
