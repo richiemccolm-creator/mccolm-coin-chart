@@ -144,30 +144,36 @@ function CoinBtn({value,word,tone,onClick,disabled}){
   );
 }
 
-/* ---------- simple built-in music (no files needed) ---------- */
+/* ---------- brushing soundtrack (real MP3 + short win jingle) ---------- */
+const BRUSH_TRACK = "/audio/brushing.mp3";
 function useBrushingTune(){
-  const ctxRef = useRef(null), stopRef = useRef(null);
+  const audioRef = useRef(null);
+  const ensure = () => {
+    if(!audioRef.current){
+      const a = new Audio(BRUSH_TRACK);
+      a.loop = true;
+      a.preload = "auto";
+      audioRef.current = a;
+    }
+    return audioRef.current;
+  };
   const start = () => {
     try{
-      const AC = window.AudioContext||window.webkitAudioContext;
-      const ctx = new AC(); ctxRef.current = ctx;
-      const notes=[523.25,587.33,659.25,783.99,659.25,587.33];
-      let i=0;
-      const gain = ctx.createGain(); gain.gain.value=0.06; gain.connect(ctx.destination);
-      const tick=()=>{
-        const o=ctx.createOscillator(); o.type="triangle";
-        o.frequency.value=notes[i%notes.length]; i++;
-        const g=ctx.createGain(); g.gain.setValueAtTime(0.0001,ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(1,ctx.currentTime+0.03);
-        g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.42);
-        o.connect(g); g.connect(gain); o.start(); o.stop(ctx.currentTime+0.45);
-      };
-      tick(); const iv=setInterval(tick,500); stopRef.current=iv;
+      const a = ensure();
+      const play = a.play();
+      if(play && typeof play.catch === "function") play.catch(function(){});
     }catch(e){}
   };
+  const pause = () => {
+    try{ if(audioRef.current) audioRef.current.pause(); }catch(e){}
+  };
   const stop = () => {
-    if(stopRef.current) clearInterval(stopRef.current);
-    if(ctxRef.current){ try{ctxRef.current.close();}catch(e){} ctxRef.current=null; }
+    try{
+      if(audioRef.current){
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    }catch(e){}
   };
   const fanfare = () => {
     try{
@@ -182,7 +188,7 @@ function useBrushingTune(){
       setTimeout(()=>{try{ctx.close();}catch(e){}},1800);
     }catch(e){}
   };
-  return {start,stop,fanfare};
+  return {start,pause,stop,fanfare};
 }
 
 /* ---------- persistence: localStorage cache + shared Supabase project ---------- */
@@ -560,12 +566,22 @@ function App(){
     return ()=>clearTimeout(t);
   },[running,secs]);
 
-  /* coin spill canvas */
+  /* coin spill canvas — gravity follows phone tilt when available */
   useEffect(()=>{
     if(modal!=="vault"||!canvasRef.current) return;
     const cv=canvasRef.current, ctx=cv.getContext("2d");
     const W=cv.width,H=cv.height, target=Math.min(coins[kid],120);
     let parts=[],frame=0,raf;
+    const tilt={gx:0, gy:0.34};
+    const onOrient=(e)=>{
+      const gamma = typeof e.gamma === "number" ? e.gamma : 0;
+      const beta  = typeof e.beta  === "number" ? e.beta  : 0;
+      const g = Math.max(-50, Math.min(50, gamma)) / 50;
+      const b = Math.max(-50, Math.min(50, beta))  / 50;
+      tilt.gx = g * 0.72;
+      tilt.gy = 0.34 + b * 0.28;
+    };
+    window.addEventListener("deviceorientation", onOrient, true);
     const make=()=>({x:W*0.5+(Math.random()-0.5)*W*0.5,y:-30-Math.random()*60,
       vx:(Math.random()-0.5)*3.4,vy:Math.random()*1.6+1,r:Math.random()*Math.PI*2,
       vr:(Math.random()-0.5)*0.22,s:13+Math.random()*7,rest:false});
@@ -584,19 +600,39 @@ function App(){
       ctx.clearRect(0,0,W,H);
       if(frame%3===0 && parts.length<target) parts.push(make());
       parts.forEach(p=>{
+        if(p.rest && Math.abs(tilt.gx) > 0.1){
+          p.rest=false;
+          p.vx += tilt.gx * 4;
+          p.vy -= 0.6;
+        }
         if(!p.rest){
-          p.vy+=0.34;p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;
+          p.vx+=tilt.gx; p.vy+=tilt.gy;
+          p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;
           if(p.x<p.s||p.x>W-p.s){p.vx*=-0.6;p.x=Math.max(p.s,Math.min(W-p.s,p.x));}
           if(p.y>H-p.s-4){p.y=H-p.s-4;p.vy*=-0.32;p.vx*=0.72;p.vr*=0.5;
-            if(Math.abs(p.vy)<1.1){p.rest=true;p.vy=0;p.r=Math.round(p.r/Math.PI)*Math.PI;}}
+            if(Math.abs(p.vy)<1.1 && Math.abs(tilt.gx)<0.12){p.rest=true;p.vy=0;p.r=Math.round(p.r/Math.PI)*Math.PI;}}
+          if(p.y<p.s){p.y=p.s;p.vy*=-0.35;}
         }
         draw(p);
       });
       frame++;raf=requestAnimationFrame(loop);
     };
     loop();
-    return ()=>cancelAnimationFrame(raf);
+    return ()=>{
+      cancelAnimationFrame(raf);
+      window.removeEventListener("deviceorientation", onOrient, true);
+    };
   },[modal,kid,coins]);
+
+  const openVault = ()=>{
+    setModal("vault");
+    try{
+      const DOE = window.DeviceOrientationEvent;
+      if(DOE && typeof DOE.requestPermission === "function"){
+        DOE.requestPermission().catch(function(){});
+      }
+    }catch(e){}
+  };
 
   const mmss=(s)=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
   const pct = 1-(secs/120);
@@ -657,7 +693,7 @@ function App(){
       </div>
 
       {/* ---------------- VAULT ---------------- */}
-      <div className="vault" onClick={()=>setModal("vault")}>
+      <div className="vault" onClick={openVault}>
         <Slot light src={IMAGES[K.img]} label={K.name} style={{width:"56px",height:"56px",borderRadius:"50%"}}/>
         <div>
           <div className="lbl">{K.name}'s coin bank</div>
@@ -750,6 +786,7 @@ function App(){
               <div style={{textAlign:"center",marginTop:"10px"}}>
                 <div className="comic" style={{fontSize:"3.4rem",color:"var(--red-dark)"}}>{coins[kid]}</div>
                 <div style={{fontWeight:900,letterSpacing:"1px"}}>COINS IN THE BANK</div>
+                <div style={{fontWeight:800,fontSize:".85rem",color:"#7a3b00",marginTop:"6px"}}>Tilt your phone to roll the coins!</div>
               </div>
               <button className="btn close" onClick={()=>setModal(null)}>Close</button>
             </div>
@@ -787,7 +824,7 @@ function App(){
                   </div>
                   {!running
                     ? <button className="btn go" onClick={()=>{setRunning(true);tune.start();}}>▶ Start brushing</button>
-                    : <button className="btn stop" onClick={()=>{tune.stop();setRunning(false);}}>⏸ Pause</button>}
+                    : <button className="btn stop" onClick={()=>{tune.pause();setRunning(false);}}>⏸ Pause</button>}
                   <button className="btn close" onClick={closeTimer}>Cancel</button>
                 </>
               )}

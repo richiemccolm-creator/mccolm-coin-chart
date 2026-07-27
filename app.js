@@ -265,47 +265,38 @@ function CoinBtn(_ref2) {
   }, word || (value === 1 ? "COIN" : "COINS")));
 }
 
-/* ---------- simple built-in music (no files needed) ---------- */
+/* ---------- brushing soundtrack (real MP3 + short win jingle) ---------- */
+var BRUSH_TRACK = "/audio/brushing.mp3";
 function useBrushingTune() {
-  var ctxRef = useRef(null),
-    stopRef = useRef(null);
+  var audioRef = useRef(null);
+  var ensure = function ensure() {
+    if (!audioRef.current) {
+      var a = new Audio(BRUSH_TRACK);
+      a.loop = true;
+      a.preload = "auto";
+      audioRef.current = a;
+    }
+    return audioRef.current;
+  };
   var start = function start() {
     try {
-      var AC = window.AudioContext || window.webkitAudioContext;
-      var ctx = new AC();
-      ctxRef.current = ctx;
-      var notes = [523.25, 587.33, 659.25, 783.99, 659.25, 587.33];
-      var i = 0;
-      var gain = ctx.createGain();
-      gain.gain.value = 0.06;
-      gain.connect(ctx.destination);
-      var tick = function tick() {
-        var o = ctx.createOscillator();
-        o.type = "triangle";
-        o.frequency.value = notes[i % notes.length];
-        i++;
-        var g = ctx.createGain();
-        g.gain.setValueAtTime(0.0001, ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(1, ctx.currentTime + 0.03);
-        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.42);
-        o.connect(g);
-        g.connect(gain);
-        o.start();
-        o.stop(ctx.currentTime + 0.45);
-      };
-      tick();
-      var iv = setInterval(tick, 500);
-      stopRef.current = iv;
+      var a = ensure();
+      var play = a.play();
+      if (play && typeof play.catch === "function") play.catch(function () {});
+    } catch (e) {}
+  };
+  var pause = function pause() {
+    try {
+      if (audioRef.current) audioRef.current.pause();
     } catch (e) {}
   };
   var stop = function stop() {
-    if (stopRef.current) clearInterval(stopRef.current);
-    if (ctxRef.current) {
-      try {
-        ctxRef.current.close();
-      } catch (e) {}
-      ctxRef.current = null;
-    }
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    } catch (e) {}
   };
   var fanfare = function fanfare() {
     try {
@@ -333,6 +324,7 @@ function useBrushingTune() {
   };
   return {
     start,
+    pause,
     stop,
     fanfare
   };
@@ -834,7 +826,7 @@ function App() {
     };
   }, [running, secs]);
 
-  /* coin spill canvas */
+  /* coin spill canvas — gravity follows phone tilt when available */
   useEffect(function () {
     if (modal !== "vault" || !canvasRef.current) return;
     var cv = canvasRef.current,
@@ -845,6 +837,19 @@ function App() {
     var parts = [],
       frame = 0,
       raf;
+    var tilt = {
+      gx: 0,
+      gy: 0.34
+    };
+    var onOrient = function onOrient(e) {
+      var gamma = typeof e.gamma === "number" ? e.gamma : 0;
+      var beta = typeof e.beta === "number" ? e.beta : 0;
+      var g = Math.max(-50, Math.min(50, gamma)) / 50;
+      var b = Math.max(-50, Math.min(50, beta)) / 50;
+      tilt.gx = g * 0.72;
+      tilt.gy = 0.34 + b * 0.28;
+    };
+    window.addEventListener("deviceorientation", onOrient, true);
     var make = function make() {
       return {
         x: W * 0.5 + (Math.random() - 0.5) * W * 0.5,
@@ -886,8 +891,14 @@ function App() {
       ctx.clearRect(0, 0, W, H);
       if (frame % 3 === 0 && parts.length < target) parts.push(make());
       parts.forEach(function (p) {
+        if (p.rest && Math.abs(tilt.gx) > 0.1) {
+          p.rest = false;
+          p.vx += tilt.gx * 4;
+          p.vy -= 0.6;
+        }
         if (!p.rest) {
-          p.vy += 0.34;
+          p.vx += tilt.gx;
+          p.vy += tilt.gy;
           p.x += p.vx;
           p.y += p.vy;
           p.r += p.vr;
@@ -900,11 +911,15 @@ function App() {
             p.vy *= -0.32;
             p.vx *= 0.72;
             p.vr *= 0.5;
-            if (Math.abs(p.vy) < 1.1) {
+            if (Math.abs(p.vy) < 1.1 && Math.abs(tilt.gx) < 0.12) {
               p.rest = true;
               p.vy = 0;
               p.r = Math.round(p.r / Math.PI) * Math.PI;
             }
+          }
+          if (p.y < p.s) {
+            p.y = p.s;
+            p.vy *= -0.35;
           }
         }
         draw(p);
@@ -914,9 +929,19 @@ function App() {
     };
     _loop2();
     return function () {
-      return cancelAnimationFrame(raf);
+      cancelAnimationFrame(raf);
+      window.removeEventListener("deviceorientation", onOrient, true);
     };
   }, [modal, kid, coins]);
+  var openVault = function openVault() {
+    setModal("vault");
+    try {
+      var DOE = window.DeviceOrientationEvent;
+      if (DOE && typeof DOE.requestPermission === "function") {
+        DOE.requestPermission().catch(function () {});
+      }
+    } catch (e) {}
+  };
   var mmss = function mmss(s) {
     return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   };
@@ -1036,9 +1061,7 @@ function App() {
     }, "🪙 ", coins[key]));
   })), /*#__PURE__*/React.createElement("div", {
     className: "vault",
-    onClick: function onClick() {
-      return setModal("vault");
-    }
+    onClick: openVault
   }, /*#__PURE__*/React.createElement(Slot, {
     light: true,
     src: IMAGES[K.img],
@@ -1239,7 +1262,14 @@ function App() {
       fontWeight: 900,
       letterSpacing: "1px"
     }
-  }, "COINS IN THE BANK")), /*#__PURE__*/React.createElement("button", {
+  }, "COINS IN THE BANK"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 800,
+      fontSize: ".85rem",
+      color: "#7a3b00",
+      marginTop: "6px"
+    }
+  }, "Tilt your phone to roll the coins!")), /*#__PURE__*/React.createElement("button", {
     className: "btn close",
     onClick: function onClick() {
       return setModal(null);
@@ -1313,7 +1343,7 @@ function App() {
   }, "▶ Start brushing") : /*#__PURE__*/React.createElement("button", {
     className: "btn stop",
     onClick: function onClick() {
-      tune.stop();
+      tune.pause();
       setRunning(false);
     }
   }, "⏸ Pause"), /*#__PURE__*/React.createElement("button", {
