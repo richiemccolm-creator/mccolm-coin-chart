@@ -109,8 +109,8 @@ const EVERYDAY_SHOP = [
   {id:"movie", name:"Friday Movie Night", sub:"pick the film", coins:5}
 ];
 const WEEKEND_SHOP = [
-  {id:"switch15", name:"Nintendo Switch", sub:"15 minutes", coins:3},
-  {id:"switch30", name:"Nintendo Switch", sub:"30 minutes", coins:5}
+  {id:"switch15", name:"Screen Time", sub:"15 minutes", coins:3},
+  {id:"switch30", name:"Screen Time", sub:"30 minutes", coins:5}
 ];
 const SAVINGS_SHOP = [
   {id:"toy-small", name:"Small toy",        coins:50},

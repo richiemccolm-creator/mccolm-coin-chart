@@ -186,12 +186,12 @@ var EVERYDAY_SHOP = [{
 }];
 var WEEKEND_SHOP = [{
   id: "switch15",
-  name: "Nintendo Switch",
+  name: "Screen Time",
   sub: "15 minutes",
   coins: 3
 }, {
   id: "switch30",
-  name: "Nintendo Switch",
+  name: "Screen Time",
   sub: "30 minutes",
   coins: 5
 }];
