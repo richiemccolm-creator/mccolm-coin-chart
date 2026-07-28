@@ -95,7 +95,8 @@ const EVERYDAY_JOBS = [
   {id:"brush-pm", name:"Brush teeth", sub:"Night",         coins:1, timer:true},
   {id:"bed",      name:"Make your bed",                     coins:1},
   {id:"dressed",  name:"Get dressed on time",               coins:1},
-  {id:"homework", name:"Homework, no fuss",                 coins:2}
+  {id:"homework", name:"Homework, no fuss",                 coins:2},
+  {id:"dinner",   name:"Sit nicely at the table", sub:"Eat your dinner", coins:2}
 ];
 const BONUS_JOBS = [
   {id:"tidy", name:"Tidy your room",           coins:3},

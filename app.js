@@ -152,6 +152,11 @@ var EVERYDAY_JOBS = [{
   id: "homework",
   name: "Homework, no fuss",
   coins: 2
+}, {
+  id: "dinner",
+  name: "Sit nicely at the table",
+  sub: "Eat your dinner",
+  coins: 2
 }];
 var BONUS_JOBS = [{
   id: "tidy",
