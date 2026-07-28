@@ -423,6 +423,22 @@ function totalCoins(coins) {
 function logCount(log) {
   return (log.sam || []).length + (log.isaac || []).length + (log.ben || []).length;
 }
+function isLocalId(id) {
+  return !id || String(id).indexOf("local-") === 0;
+}
+function hasUnsyncedLog(log) {
+  return Object.keys(KIDS).some(function (slug) {
+    return (log[slug] || []).some(function (e) {
+      return isLocalId(e.id);
+    });
+  });
+}
+function localIsAhead(localCoins, localLog, remoteCoins, remoteLog) {
+  if (hasUnsyncedLog(localLog)) return true;
+  return Object.keys(KIDS).some(function (slug) {
+    return (localCoins[slug] || 0) > (remoteCoins[slug] || 0);
+  }) || totalCoins(localCoins) > totalCoins(remoteCoins) || logCount(localLog) > logCount(remoteLog) && totalCoins(localCoins) >= totalCoins(remoteCoins);
+}
 
 /* ================= APP ================= */
 function App() {
@@ -472,7 +488,15 @@ function App() {
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
+  var syncReadyRef = useRef(false);
+  var pendingSyncRef = useRef([]);
+  var coinsRef = useRef(initial.coins);
+  var logRef = useRef(initial.log);
   var tune = useBrushingTune();
+  useEffect(function () {
+    coinsRef.current = coins;
+    logRef.current = log;
+  }, [coins, log]);
   useEffect(function () {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -485,7 +509,6 @@ function App() {
   useEffect(function () {
     if (!supabaseReady() || hydratedRef.current) return;
     hydratedRef.current = true;
-    var localSnap = loadState();
     Promise.all([sbFetch("coin_kids?select=id,slug,balance&order=sort_order.asc", {
       headers: sbHeaders()
     }), sbFetch("coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc", {
@@ -502,6 +525,8 @@ function App() {
         }
       });
       kidIdsRef.current = ids;
+      // Keep syncReadyRef false until hydrate finishes so earns during fetch stay queued.
+
       var idToSlug = {};
       Object.keys(ids).forEach(function (slug) {
         idToSlug[ids[slug]] = slug;
@@ -518,23 +543,71 @@ function App() {
           when: formatWhen(tx.created_at)
         });
       });
+
+      // Use live local state (may have changed while the fetch was in flight).
+      var liveCoins = Object.assign({}, DEFAULT_COINS, coinsRef.current || {});
+      var liveLog = {
+        sam: logRef.current && logRef.current.sam || [],
+        isaac: logRef.current && logRef.current.isaac || [],
+        ben: logRef.current && logRef.current.ben || []
+      };
       var remoteEmpty = totalCoins(remoteCoins) === 0 && logCount(remoteLog) === 0;
-      var localHasData = totalCoins(localSnap.coins) > 0 || logCount(localSnap.log) > 0;
-      if (remoteEmpty && localHasData && Object.keys(ids).length) {
-        return pushLocalToCloud(localSnap.coins, localSnap.log, ids).then(function (mappedLog) {
-          setCoins(localSnap.coins);
-          setLog(mappedLog || localSnap.log);
-          setCloud("online");
+      var localHasData = totalCoins(liveCoins) > 0 || logCount(liveLog) > 0;
+      var preferLocal = remoteEmpty && localHasData || localIsAhead(liveCoins, liveLog, remoteCoins, remoteLog);
+      if (preferLocal && Object.keys(ids).length) {
+        return pushLocalToCloud(liveCoins, liveLog, ids, remoteLog).then(function (result) {
+          var mappedLog = result && result.log ? result.log : result || liveLog;
+          var tempIdMap = result && result.tempIdMap || {};
+
+          // Keep whatever the user has now (including earns during the upload).
+          var latestCoins = Object.assign({}, DEFAULT_COINS, coinsRef.current || liveCoins);
+          setLog(function (current) {
+            var out = emptyLog();
+            Object.keys(KIDS).forEach(function (slug) {
+              out[slug] = (current[slug] || []).map(function (e) {
+                var mapped = tempIdMap[e.id];
+                return mapped ? Object.assign({}, e, mapped) : e;
+              });
+            });
+            // If current was somehow empty, fall back to mapped log.
+            if (logCount(out) === 0 && logCount(mappedLog) > 0) return mappedLog;
+            logRef.current = out;
+            return out;
+          });
+          coinsRef.current = latestCoins;
+          setCoins(latestCoins);
+
+          // Drop insert jobs already uploaded; keep anything newer for flush.
+          pendingSyncRef.current = pendingSyncRef.current.filter(function (job) {
+            return !(job.kind === "insert" && tempIdMap[job.tempId]);
+          });
+          syncReadyRef.current = true;
+          var balTasks = Object.keys(KIDS).map(function (slug) {
+            return runSyncJob({
+              kind: "balance",
+              slug: slug,
+              balance: latestCoins[slug] || 0
+            });
+          });
+          return Promise.all(balTasks).then(function () {
+            return flushPendingSync();
+          }).then(function () {
+            setCloud("online");
+          });
         });
       }
+      pendingSyncRef.current = [];
+      coinsRef.current = remoteCoins;
+      logRef.current = remoteLog;
       setCoins(remoteCoins);
       setLog(remoteLog);
+      syncReadyRef.current = true;
       setCloud("online");
     }).catch(function () {
       setCloud("offline");
     });
   }, []);
-  function pushLocalToCloud(localCoins, localLog, ids) {
+  function pushLocalToCloud(localCoins, localLog, ids, remoteLog) {
     var patches = Object.keys(KIDS).map(function (slug) {
       if (!ids[slug]) return Promise.resolve();
       return sbFetch("coin_kids?slug=eq." + encodeURIComponent(slug), {
@@ -548,87 +621,185 @@ function App() {
         })
       });
     });
-    var inserts = [];
+    var unsynced = [];
     Object.keys(KIDS).forEach(function (slug) {
       var kidId = ids[slug];
       if (!kidId) return;
       var entries = (localLog[slug] || []).slice().reverse();
       entries.forEach(function (entry) {
-        inserts.push({
+        if (!isLocalId(entry.id)) return;
+        unsynced.push({
+          tempId: entry.id,
           slug: slug,
           body: {
             kid_id: kidId,
             entry_type: entry.type === "spent" ? "spent" : "earned",
             amount: entry.amount,
-            description: entry.desc || "",
-            created_at: entry.when ? undefined : new Date().toISOString()
+            description: entry.desc || ""
           }
         });
       });
     });
     return Promise.all(patches).then(function () {
-      if (!inserts.length) return localLog;
+      var base = remoteLog ? {
+        sam: (remoteLog.sam || []).slice(),
+        isaac: (remoteLog.isaac || []).slice(),
+        ben: (remoteLog.ben || []).slice()
+      } : emptyLog();
+      var merged = emptyLog();
+      Object.keys(KIDS).forEach(function (slug) {
+        var fromLocal = (localLog[slug] || []).filter(function (e) {
+          return !isLocalId(e.id);
+        });
+        var fromRemote = base[slug] || [];
+        var seen = {};
+        var out = [];
+        fromLocal.concat(fromRemote).forEach(function (e) {
+          if (!e || !e.id || seen[e.id]) return;
+          seen[e.id] = true;
+          out.push(e);
+        });
+        (localLog[slug] || []).forEach(function (e) {
+          if (isLocalId(e.id) && !seen[e.id]) {
+            seen[e.id] = true;
+            out.unshift(e);
+          }
+        });
+        merged[slug] = out;
+      });
+      var tempIdMap = {};
+      if (!unsynced.length) return {
+        log: merged,
+        tempIdMap: tempIdMap
+      };
       return sbFetch("coin_transactions", {
         method: "POST",
         headers: sbHeaders({
           "Prefer": "return=representation"
         }),
-        body: JSON.stringify(inserts.map(function (i) {
+        body: JSON.stringify(unsynced.map(function (i) {
           return i.body;
         }))
       }).then(function (rows) {
-        var mapped = emptyLog();
         var list = rows || [];
         var _loop = function _loop() {
           var tx = list[i];
-          var slug = Object.keys(ids).filter(function (s) {
-            return ids[s] === tx.kid_id;
-          })[0];
-          if (!slug) return 1; // continue
-          mapped[slug].push({
+          var meta = unsynced[i];
+          if (!meta) return 1; // continue
+          var mapped = {
             id: tx.id,
             type: tx.entry_type,
             amount: Number(tx.amount) || 0,
             desc: tx.description,
             when: formatWhen(tx.created_at)
+          };
+          tempIdMap[meta.tempId] = mapped;
+          var slug = meta.slug;
+          merged[slug] = (merged[slug] || []).map(function (e) {
+            if (e.id !== meta.tempId) return e;
+            return Object.assign({}, e, mapped, {
+              when: mapped.when || e.when
+            });
           });
         };
-        for (var i = list.length - 1; i >= 0; i--) {
+        for (var i = 0; i < list.length; i++) {
           if (_loop()) continue;
         }
-        return mapped;
+        return {
+          log: merged,
+          tempIdMap: tempIdMap
+        };
       });
     });
   }
+  function runSyncJob(job) {
+    if (job.kind === "balance") {
+      // Always prefer the live balance so out-of-order patches can't leave the cloud stale.
+      var balance = coinsRef.current && coinsRef.current[job.slug] != null ? coinsRef.current[job.slug] : job.balance;
+      return sbFetch("coin_kids?slug=eq." + encodeURIComponent(job.slug), {
+        method: "PATCH",
+        headers: sbHeaders({
+          "Prefer": "return=minimal"
+        }),
+        body: JSON.stringify({
+          balance: balance,
+          updated_at: new Date().toISOString()
+        })
+      });
+    }
+    if (job.kind === "insert") {
+      var kidId = kidIdsRef.current[job.slug];
+      if (!kidId) return Promise.resolve(null);
+      return sbFetch("coin_transactions", {
+        method: "POST",
+        headers: sbHeaders({
+          "Prefer": "return=representation"
+        }),
+        body: JSON.stringify({
+          kid_id: kidId,
+          entry_type: job.entryType,
+          amount: job.amount,
+          description: job.desc
+        })
+      }).then(function (rows) {
+        var row = rows && rows[0] ? rows[0] : null;
+        if (row && job.tempId) {
+          setLog(function (l) {
+            var next = Object.assign({}, l);
+            next[job.slug] = (l[job.slug] || []).map(function (e) {
+              return e.id === job.tempId ? Object.assign({}, e, {
+                id: row.id,
+                when: formatWhen(row.created_at) || e.when
+              }) : e;
+            });
+            return next;
+          });
+        }
+        return row;
+      });
+    }
+    if (job.kind === "delete") {
+      return sbFetch("coin_transactions?id=eq." + encodeURIComponent(job.id), {
+        method: "DELETE",
+        headers: sbHeaders({
+          "Prefer": "return=minimal"
+        })
+      });
+    }
+    return Promise.resolve();
+  }
+  function enqueueSync(job) {
+    if (!supabaseReady()) return Promise.resolve(null);
+    if (!syncReadyRef.current || job.slug && !kidIdsRef.current[job.slug] && job.kind !== "delete") {
+      pendingSyncRef.current.push(job);
+      return Promise.resolve(null);
+    }
+    return runSyncJob(job);
+  }
+  function flushPendingSync() {
+    var jobs = pendingSyncRef.current.splice(0);
+    if (!jobs.length) return Promise.resolve();
+    return jobs.reduce(function (chain, job) {
+      return chain.then(function () {
+        return runSyncJob(job);
+      });
+    }, Promise.resolve());
+  }
   function syncBalance(slug, balance) {
-    if (!supabaseReady() || !kidIdsRef.current[slug]) return Promise.resolve();
-    return sbFetch("coin_kids?slug=eq." + encodeURIComponent(slug), {
-      method: "PATCH",
-      headers: sbHeaders({
-        "Prefer": "return=minimal"
-      }),
-      body: JSON.stringify({
-        balance: balance,
-        updated_at: new Date().toISOString()
-      })
+    return enqueueSync({
+      kind: "balance",
+      slug: slug,
+      balance: balance
     });
   }
-  function syncInsertTx(slug, entryType, amount, desc) {
-    var kidId = kidIdsRef.current[slug];
-    if (!supabaseReady() || !kidId) return Promise.resolve(null);
-    return sbFetch("coin_transactions", {
-      method: "POST",
-      headers: sbHeaders({
-        "Prefer": "return=representation"
-      }),
-      body: JSON.stringify({
-        kid_id: kidId,
-        entry_type: entryType,
-        amount: amount,
-        description: desc
-      })
-    }).then(function (rows) {
-      return rows && rows[0] ? rows[0] : null;
+  function syncInsertTx(slug, entryType, amount, desc, tempId) {
+    return enqueueSync({
+      kind: "insert",
+      slug: slug,
+      entryType: entryType,
+      amount: amount,
+      desc: desc,
+      tempId: tempId
     });
   }
   var weekend = useMemo(function () {
@@ -652,38 +823,29 @@ function App() {
       desc: desc,
       when: when
     };
+    var newBal = 0;
     setCoins(function (c) {
       var next = Object.assign({}, c);
-      next[kid] = (c[kid] || 0) + amount;
+      newBal = (c[kid] || 0) + amount;
+      next[kid] = newBal;
+      coinsRef.current = next;
       return next;
     });
     setLog(function (l) {
       var next = Object.assign({}, l);
       next[kid] = [entry].concat(l[kid] || []);
+      logRef.current = next;
       return next;
     });
     flash("+" + amount + " for " + K.name + "!");
-    var newBal = (coins[kid] || 0) + amount;
-    Promise.all([syncInsertTx(kid, "earned", amount, desc), syncBalance(kid, newBal)]).then(function (results) {
-      var row = results[0];
-      if (!row || !row.id) return;
-      setLog(function (l) {
-        var next = Object.assign({}, l);
-        next[kid] = (l[kid] || []).map(function (e) {
-          return e.id === tempId ? Object.assign({}, e, {
-            id: row.id,
-            when: formatWhen(row.created_at) || e.when
-          }) : e;
-        });
-        return next;
-      });
+    Promise.all([syncInsertTx(kid, "earned", amount, desc, tempId), syncBalance(kid, newBal)]).then(function () {
       setCloud("online");
     }).catch(function () {
       setCloud("offline");
     });
   };
   var spend = function spend(amount, desc) {
-    if (coins[kid] < amount) {
+    if ((coinsRef.current[kid] || 0) < amount) {
       flash("Not enough coins!");
       return;
     }
@@ -696,62 +858,54 @@ function App() {
       desc: desc,
       when: when
     };
+    var newBal = 0;
     setCoins(function (c) {
       var next = Object.assign({}, c);
-      next[kid] = (c[kid] || 0) - amount;
+      newBal = (c[kid] || 0) - amount;
+      next[kid] = newBal;
+      coinsRef.current = next;
       return next;
     });
     setLog(function (l) {
       var next = Object.assign({}, l);
       next[kid] = [entry].concat(l[kid] || []);
+      logRef.current = next;
       return next;
     });
     flash("−" + amount + " · " + desc);
-    var newBal = (coins[kid] || 0) - amount;
-    Promise.all([syncInsertTx(kid, "spent", amount, desc), syncBalance(kid, newBal)]).then(function (results) {
-      var row = results[0];
-      if (!row || !row.id) return;
-      setLog(function (l) {
-        var next = Object.assign({}, l);
-        next[kid] = (l[kid] || []).map(function (e) {
-          return e.id === tempId ? Object.assign({}, e, {
-            id: row.id,
-            when: formatWhen(row.created_at) || e.when
-          }) : e;
-        });
-        return next;
-      });
+    Promise.all([syncInsertTx(kid, "spent", amount, desc, tempId), syncBalance(kid, newBal)]).then(function () {
       setCloud("online");
     }).catch(function () {
       setCloud("offline");
     });
   };
   var undoLast = function undoLast() {
-    var entry = log[kid][0];
+    var entry = (logRef.current[kid] || [])[0] || log[kid][0];
     if (!entry) {
       flash("Nothing to undo");
       return;
     }
-    var newBal = entry.type === "earned" ? Math.max(0, (coins[kid] || 0) - entry.amount) : (coins[kid] || 0) + entry.amount;
+    var newBal = 0;
     setCoins(function (c) {
       var next = Object.assign({}, c);
+      newBal = entry.type === "earned" ? Math.max(0, (c[kid] || 0) - entry.amount) : (c[kid] || 0) + entry.amount;
       next[kid] = newBal;
+      coinsRef.current = next;
       return next;
     });
     setLog(function (l) {
       var next = Object.assign({}, l);
       next[kid] = (l[kid] || []).slice(1);
+      logRef.current = next;
       return next;
     });
     flash("Undid " + entry.desc);
-    var remoteId = entry.id && String(entry.id).indexOf("local-") !== 0 ? entry.id : null;
+    var remoteId = !isLocalId(entry.id) ? entry.id : null;
     var tasks = [syncBalance(kid, newBal)];
     if (remoteId && supabaseReady()) {
-      tasks.push(sbFetch("coin_transactions?id=eq." + encodeURIComponent(remoteId), {
-        method: "DELETE",
-        headers: sbHeaders({
-          "Prefer": "return=minimal"
-        })
+      tasks.push(enqueueSync({
+        kind: "delete",
+        id: remoteId
       }));
     }
     Promise.all(tasks).then(function () {
