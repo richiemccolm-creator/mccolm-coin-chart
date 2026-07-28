@@ -72,6 +72,8 @@ const IMAGES = {
     "bed":"/img/bed.png",
     "dressed":"/img/dressed.png",
     "homework":"/img/homework.png",
+    "sit":"",
+    "dinner":"",
     "tidy":"/img/tidy.png",
     "cook":"/img/cook.png",
     "club":"/img/club.png",
@@ -96,7 +98,8 @@ const EVERYDAY_JOBS = [
   {id:"bed",      name:"Make your bed",                     coins:1},
   {id:"dressed",  name:"Get dressed on time",               coins:1},
   {id:"homework", name:"Homework, no fuss",                 coins:2},
-  {id:"dinner",   name:"Sit nicely at the table", sub:"Eat your dinner", coins:2}
+  {id:"sit",      name:"Sit nicely at the table",           coins:1, icon:"🪑"},
+  {id:"dinner",   name:"Eat your dinner",                   coins:1, icon:"🍽️"}
 ];
 const BONUS_JOBS = [
   {id:"tidy", name:"Tidy your room",           coins:3},
@@ -124,13 +127,13 @@ const SAVINGS_SHOP = [
 ];
 
 /* ---------- image placeholder component ---------- */
-function Slot({src,label,className,style,light}){
+function Slot({src,label,className,style,light,icon}){
   return (
     <div className={"slot "+(src?"has-img ":"")+(light?"light ":"")+(className||"")} style={style}>
       {src ? <img src={src} alt={label}/> :
         <div>
-          <div className="slot-ico">🖼️</div>
-          <div className="slot-label">{label}</div>
+          <div className={"slot-ico"+(icon?" emoji":"")}>{icon||"🖼️"}</div>
+          {!icon && <div className="slot-label">{label}</div>}
         </div>}
     </div>
   );
@@ -784,7 +787,7 @@ function App(){
   /* ---------- row renderers ---------- */
   const JobRow = ({job,tone,group}) => (
     <div className="row">
-      <Slot light src={IMAGES.jobs[job.id]} label={job.id} className="icon-slot"/>
+      <Slot light src={IMAGES.jobs[job.id]} label={job.id} icon={job.icon} className="icon-slot"/>
       <div className="rtext">
         <div className="rname">{job.name}</div>
         {job.sub && <div className="rsub">{job.sub}</div>}

@@ -82,6 +82,8 @@ var IMAGES = {
     "bed": "/img/bed.png",
     "dressed": "/img/dressed.png",
     "homework": "/img/homework.png",
+    "sit": "",
+    "dinner": "",
     "tidy": "/img/tidy.png",
     "cook": "/img/cook.png",
     "club": "/img/club.png",
@@ -153,10 +155,15 @@ var EVERYDAY_JOBS = [{
   name: "Homework, no fuss",
   coins: 2
 }, {
-  id: "dinner",
+  id: "sit",
   name: "Sit nicely at the table",
-  sub: "Eat your dinner",
-  coins: 2
+  coins: 1,
+  icon: "🪑"
+}, {
+  id: "dinner",
+  name: "Eat your dinner",
+  coins: 1,
+  icon: "🍽️"
 }];
 var BONUS_JOBS = [{
   id: "tidy",
@@ -240,7 +247,8 @@ function Slot(_ref) {
     label = _ref.label,
     className = _ref.className,
     style = _ref.style,
-    light = _ref.light;
+    light = _ref.light,
+    icon = _ref.icon;
   return /*#__PURE__*/React.createElement("div", {
     className: "slot " + (src ? "has-img " : "") + (light ? "light " : "") + (className || ""),
     style: style
@@ -248,8 +256,8 @@ function Slot(_ref) {
     src: src,
     alt: label
   }) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "slot-ico"
-  }, "🖼️"), /*#__PURE__*/React.createElement("div", {
+    className: "slot-ico" + (icon ? " emoji" : "")
+  }, icon || "🖼️"), !icon && /*#__PURE__*/React.createElement("div", {
     className: "slot-label"
   }, label)));
 }
@@ -1117,6 +1125,7 @@ function App() {
       light: true,
       src: IMAGES.jobs[job.id],
       label: job.id,
+      icon: job.icon,
       className: "icon-slot"
     }), /*#__PURE__*/React.createElement("div", {
       className: "rtext"
