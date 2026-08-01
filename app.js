@@ -350,6 +350,15 @@ var POWERUPS = [{
   check: function check(s) {
     return s.count.kind >= 10;
   }
+}, {
+  id: "extra-drop",
+  name: "Bonus Drop",
+  icon: "🎯",
+  effect: "playCoinDrop",
+  blurb: "Play the coin drop game once — no brushing needed!",
+  check: function check(s) {
+    return s.brushTotal >= 5;
+  }
 }];
 var ALL_REWARDS = TROPHIES.map(function (t) {
   return Object.assign({}, t, {
@@ -1457,7 +1466,7 @@ function CoinDropGame(props) {
     className: "coin-drop-head"
   }, /*#__PURE__*/React.createElement("h2", {
     className: "comic"
-  }, "You earned a coin!"), /*#__PURE__*/React.createElement("p", {
+  }, reward && reward.source === "powerup-extra-drop" ? "Bonus Drop!" : "You earned a coin!"), /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
   }, instruct), (tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-toast"
@@ -2409,6 +2418,24 @@ function App() {
       earn(5, "Coin Drop power-up", "powerup-coin-boost", {
         skipDouble: true
       });
+      return;
+    }
+    if (meta.effect === "playCoinDrop") {
+      markPowerupUsed(slug, unlockId);
+      var reward = {
+        rewardId: makeRewardId(),
+        kidId: slug,
+        amount: 1,
+        description: "Bonus Coin Drop",
+        source: "powerup-extra-drop",
+        createdAt: new Date().toISOString(),
+        awarded: false
+      };
+      pendingRewardRef.current = reward;
+      setPendingReward(reward);
+      deferUnlockModalRef.current = true;
+      setModal("coinDrop");
+      flash("Bonus Drop — guide that coin!");
       return;
     }
   };

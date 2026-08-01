@@ -162,7 +162,10 @@ const POWERUPS = [
     check:function(s){ return s.switchSpends >= 5 || s.earned >= 30; }},
   {id:"coin-boost",  name:"Coin Drop",         icon:"🪙", effect:"coinDrop",
     blurb:"Tap Use for an instant +5 coins!",
-    check:function(s){ return s.count.kind >= 10; }}
+    check:function(s){ return s.count.kind >= 10; }},
+  {id:"extra-drop",  name:"Bonus Drop",        icon:"🎯", effect:"playCoinDrop",
+    blurb:"Play the coin drop game once — no brushing needed!",
+    check:function(s){ return s.brushTotal >= 5; }}
 ];
 
 const ALL_REWARDS = TROPHIES.map(function(t){
@@ -1124,7 +1127,9 @@ function CoinDropGame(props){
     <div className="modal coin-drop-modal">
       <div className={"coin-drop-sheet kid-"+kid.id} onClick={function(e){ e.stopPropagation(); }}>
         <div className="coin-drop-head">
-          <h2 className="comic">You earned a coin!</h2>
+          <h2 className="comic">
+            {reward && reward.source === "powerup-extra-drop" ? "Bonus Drop!" : "You earned a coin!"}
+          </h2>
           <p className="coin-drop-instructions">{instruct}</p>
           {(tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && (
             <p className="coin-drop-toast">Tilt unavailable · Drag or use the arrows</p>
@@ -1983,6 +1988,24 @@ function App(){
     if(meta.effect === "coinDrop"){
       markPowerupUsed(slug, unlockId);
       earn(5, "Coin Drop power-up", "powerup-coin-boost", {skipDouble:true});
+      return;
+    }
+    if(meta.effect === "playCoinDrop"){
+      markPowerupUsed(slug, unlockId);
+      const reward = {
+        rewardId: makeRewardId(),
+        kidId: slug,
+        amount: 1,
+        description: "Bonus Coin Drop",
+        source: "powerup-extra-drop",
+        createdAt: new Date().toISOString(),
+        awarded: false
+      };
+      pendingRewardRef.current = reward;
+      setPendingReward(reward);
+      deferUnlockModalRef.current = true;
+      setModal("coinDrop");
+      flash("Bonus Drop — guide that coin!");
       return;
     }
   };
