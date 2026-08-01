@@ -82,27 +82,27 @@ var IMAGES = {
     "bed": "/img/bed.png",
     "dressed": "/img/dressed.png",
     "homework": "/img/homework.png",
-    "sit": "",
-    "dinner": "",
+    "sit": "/img/sit.png",
+    "dinner": "/img/dinner.png",
     "tidy": "/img/tidy.png",
     "cook": "/img/cook.png",
     "club": "/img/club.png",
     "kind": "/img/kind.png"
   },
   shop: {
-    "tv": "",
-    "screentime": "",
-    "snack": "",
-    "movie": "",
-    "switch15": "",
-    "switch30": "",
-    "tax": "",
-    "toy-small": "",
-    "park": "",
-    "late": "",
-    "dayout": "",
-    "toy-big": "",
-    "cinema": ""
+    "tv": "/img/tv.png",
+    "screentime": "/img/screentime.png",
+    "snack": "/img/snack.png",
+    "movie": "/img/movie.png",
+    "switch15": "/img/switch15.png",
+    "switch30": "/img/switch30.png",
+    "tax": "/img/tax.png",
+    "toy-small": "/img/toy-small.png",
+    "park": "/img/park.png",
+    "late": "/img/late.png",
+    "dayout": "/img/dayout.png",
+    "toy-big": "/img/toy-big.png",
+    "cinema": "/img/cinema.png"
   }
 };
 

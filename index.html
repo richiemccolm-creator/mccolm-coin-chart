@@ -117,7 +117,9 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   color:rgba(255,255,255,.85);text-align:center;
 }
 .slot.light{background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.35);color:rgba(0,0,0,.55)}
-.slot.has-img{background:transparent;border:none;overflow:visible}
+.slot.has-img,.row .icon-slot{
+  background:transparent;border:none;overflow:visible;
+}
 .slot img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}
 .slot .slot-label{font-size:.5rem;font-weight:900;letter-spacing:.4px;line-height:1.15;padding:2px;text-transform:uppercase}
 .slot .slot-ico{font-size:1rem;opacity:.7}
@@ -244,7 +246,12 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   border-radius:9px;padding:7px 8px;margin-bottom:7px;box-shadow:0 3px 0 rgba(0,0,0,.25);
 }
 .row > * + *{margin-left:9px}
-.row .icon-slot{width:40px;height:40px;border-radius:8px}
+.row .icon-slot{width:54px;height:54px;border-radius:10px}
+.row .icon-slot .slot-ico.emoji{font-size:2rem}
+.row .icon-slot.has-img img{
+  object-fit:contain;object-position:center;
+  -webkit-transform:scale(1.3);transform:scale(1.3);
+}
 .row .rtext{-webkit-box-flex:1;-webkit-flex:1;flex:1;min-width:0}
 .row .rname{font-weight:900;font-size:.95rem;line-height:1.15}
 .row .rsub{font-size:.72rem;color:#555;font-weight:700}
