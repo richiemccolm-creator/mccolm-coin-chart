@@ -304,6 +304,89 @@ function normalizeUnlockList(list){
   });
 }
 
+function defaultSettings(){
+  return {coinDropEnabled:true, tiltControlsEnabled:true};
+}
+
+function normalizeSettings(raw){
+  const base = defaultSettings();
+  if(!raw || typeof raw !== "object") return base;
+  return {
+    coinDropEnabled: raw.coinDropEnabled !== false,
+    tiltControlsEnabled: raw.tiltControlsEnabled !== false
+  };
+}
+
+function normalizePendingReward(raw){
+  if(!raw || typeof raw !== "object" || !raw.rewardId || !raw.kidId) return null;
+  if(!KIDS[raw.kidId]) return null;
+  return {
+    rewardId: String(raw.rewardId),
+    kidId: raw.kidId,
+    amount: Math.max(1, Number(raw.amount) || 1),
+    description: raw.description || "Brush teeth",
+    source: raw.source || "brush-am",
+    createdAt: raw.createdAt || new Date().toISOString(),
+    awarded: !!raw.awarded
+  };
+}
+
+function makeRewardId(){
+  try{
+    if(typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"){
+      return crypto.randomUUID();
+    }
+  }catch(e){}
+  return "rw-"+Date.now()+"-"+Math.floor(Math.random()*1e9);
+}
+
+function clamp(n, lo, hi){
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function prefersReducedMotion(){
+  try{
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }catch(e){ return false; }
+}
+
+function playCoinSfx(kind, enabled){
+  if(enabled === false) return;
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    const ctx = new AC();
+    const now = ctx.currentTime;
+    if(kind === "whoosh"){
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = "triangle"; o.frequency.setValueAtTime(420, now);
+      o.frequency.exponentialRampToValueAtTime(120, now + 0.28);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.1, now + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+      o.connect(g); g.connect(ctx.destination); o.start(now); o.stop(now + 0.32);
+    }else if(kind === "peg"){
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = "square"; o.frequency.value = 880 + Math.random() * 120;
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.05, now + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+      o.connect(g); g.connect(ctx.destination); o.start(now); o.stop(now + 0.1);
+    }else if(kind === "vault"){
+      [660, 880, 1046].forEach(function(f, i){
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.type = "sine"; o.frequency.value = f;
+        const t = now + i * 0.07;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+        o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.25);
+      });
+    }
+    setTimeout(function(){ try{ ctx.close(); }catch(e){} }, 800);
+  }catch(e){}
+}
+
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -313,7 +396,9 @@ function loadState(){
         coins:Object.assign({}, DEFAULT_COINS),
         log:emptyLog(),
         unlocks:emptyUnlocks(),
-        boosts:emptyBoosts()
+        boosts:emptyBoosts(),
+        settings:defaultSettings(),
+        pendingReward:null
       };
     }
     const parsed = JSON.parse(raw);
@@ -338,7 +423,9 @@ function loadState(){
         isaac: normalizeUnlockList(parsed.unlocks && parsed.unlocks.isaac),
         ben: normalizeUnlockList(parsed.unlocks && parsed.unlocks.ben)
       },
-      boosts: boosts
+      boosts: boosts,
+      settings: normalizeSettings(parsed.settings),
+      pendingReward: normalizePendingReward(parsed.pendingReward)
     };
   }catch(e){
     return {
@@ -346,7 +433,9 @@ function loadState(){
       coins:Object.assign({}, DEFAULT_COINS),
       log:emptyLog(),
       unlocks:emptyUnlocks(),
-      boosts:emptyBoosts()
+      boosts:emptyBoosts(),
+      settings:defaultSettings(),
+      pendingReward:null
     };
   }
 }
@@ -484,6 +573,621 @@ function findNewUnlocks(slug, log, coins, ownedIds){
   return fresh;
 }
 
+/* ---------- Coin Drop mini-game (brushing reward collection) ---------- */
+const CD_W = 360;
+const CD_H = 520;
+const CD_GRAVITY = 0.18;
+const CD_AIR = 0.995;
+const CD_BOUNCE = 0.62;
+const CD_MAX_SPEED = 8;
+const CD_TILT = 0.025;
+const CD_LANDING_Y = 448;
+const CD_MAX_MS = 15000;
+
+const CD_PEGS = [
+  {x:90,y:110,r:8},{x:180,y:110,r:8},{x:270,y:110,r:8},
+  {x:60,y:165,r:8},{x:135,y:165,r:8},{x:225,y:165,r:8},{x:300,y:165,r:8},
+  {x:90,y:220,r:8},{x:180,y:220,r:8},{x:270,y:220,r:8},
+  {x:120,y:275,r:8},{x:240,y:275,r:8},
+  {x:70,y:330,r:8},{x:180,y:330,r:8},{x:290,y:330,r:8}
+];
+
+const CD_BUMPERS = [
+  {x1:28,y1:240,x2:130,y2:275,thickness:10},
+  {x1:332,y1:240,x2:230,y2:275,thickness:10},
+  {x1:50,y1:370,x2:150,y2:400,thickness:9}
+];
+
+function cdZoneForX(x){
+  if(x < 115) return "left";
+  if(x > 245) return "right";
+  return "vault";
+}
+
+function cdZoneLabel(zone){
+  if(zone === "left") return "BAM!";
+  if(zone === "right") return "NICE SHOT!";
+  return "SUPER DROP!";
+}
+
+function CoinDropGame(props){
+  const kid = props.kid;
+  const reward = props.reward;
+  const tiltAllowedSetting = props.tiltControlsEnabled !== false;
+  const onComplete = props.onComplete;
+  const onClose = props.onClose;
+  const awardReward = props.awardReward;
+
+  const canvasRef = useRef(null);
+  const coinRef = useRef({
+    x: CD_W / 2, y: 48, radius: 18,
+    vx: 0, vy: 0, rotation: 0, rotationSpeed: 0,
+    active: false, landed: false
+  });
+  const tiltRef = useRef(0);
+  const pointerSteerRef = useRef(0);
+  const pointerActiveRef = useRef(false);
+  const pointerStartXRef = useRef(0);
+  const buttonSteerRef = useRef(0);
+  const keySteerRef = useRef(0);
+  const animationFrameRef = useRef(0);
+  const finishedRef = useRef(false);
+  const startTimeRef = useRef(0);
+  const timeoutRef = useRef(0);
+  const particlesRef = useRef([]);
+  const moversRef = useRef([
+    {x:90,y:300,w:46,h:18,vx:1.1,label:"POW"},
+    {x:220,y:355,w:52,h:18,vx:-0.9,label:"ZAP"}
+  ]);
+  const pegHitCooldownRef = useRef(0);
+  const awardResultRef = useRef(null);
+  const reducedRef = useRef(prefersReducedMotion());
+
+  const [gameStage, setGameStage] = useState("ready");
+  const [tiltEnabled, setTiltEnabled] = useState(false);
+  const tiltEnabledRef = useRef(false);
+  const [tiltUnavailable, setTiltUnavailable] = useState(false);
+  const [resultText, setResultText] = useState(null);
+  const [resultAmount, setResultAmount] = useState(null);
+  const [boostFlash, setBoostFlash] = useState(false);
+
+  const drawBoard = function(ctx, coin, movers, particles, bobY){
+    const g = ctx.createLinearGradient(0, 0, 0, CD_H);
+    g.addColorStop(0, "#1a3fa0");
+    g.addColorStop(1, "#04113d");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CD_W, CD_H);
+
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#fff";
+    for(var hx = 12; hx < CD_W; hx += 18){
+      for(var hy = 12; hy < CD_H - 80; hy += 18){
+        ctx.beginPath();
+        ctx.arc(hx + ((hy / 18) % 2) * 6, hy, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = "rgba(255,196,46,0.18)";
+    ctx.lineWidth = 2;
+    for(var ray = -4; ray <= 4; ray++){
+      ctx.beginPath();
+      ctx.moveTo(CD_W / 2, -20);
+      ctx.lineTo(CD_W / 2 + ray * 55, CD_H * 0.55);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(0, 0, 10, CD_H);
+    ctx.fillRect(CD_W - 10, 0, 10, CD_H);
+
+    CD_PEGS.forEach(function(p){
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffc42e";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000";
+      ctx.stroke();
+    });
+
+    CD_BUMPERS.forEach(function(b){
+      ctx.beginPath();
+      ctx.moveTo(b.x1, b.y1);
+      ctx.lineTo(b.x2, b.y2);
+      ctx.lineWidth = b.thickness;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = kid.colour || "#ff8c00";
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000";
+      ctx.stroke();
+    });
+
+    movers.forEach(function(m){
+      ctx.fillStyle = "#ff3b3b";
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(m.x, m.y + m.h / 2);
+      ctx.lineTo(m.x + m.w * 0.2, m.y);
+      ctx.lineTo(m.x + m.w * 0.8, m.y);
+      ctx.lineTo(m.x + m.w, m.y + m.h / 2);
+      ctx.lineTo(m.x + m.w * 0.8, m.y + m.h);
+      ctx.lineTo(m.x + m.w * 0.2, m.y + m.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 11px Impact,sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(m.label, m.x + m.w / 2, m.y + m.h / 2 + 1);
+    });
+
+    const zonesY = CD_H - 62;
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(12, zonesY, 95, 50);
+    ctx.fillRect(253, zonesY, 95, 50);
+    ctx.fillStyle = "#0b3d91";
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 3;
+    ctx.fillRect(112, zonesY - 6, 136, 56);
+    ctx.strokeRect(112, zonesY - 6, 136, 56);
+    ctx.fillStyle = "#ffc42e";
+    ctx.font = "22px Luckiest Guy,Impact,sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("VAULT", CD_W / 2, zonesY + 28);
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.font = "bold 10px sans-serif";
+    ctx.fillText("BAM!", 59, zonesY + 28);
+    ctx.fillText("NICE!", 300, zonesY + 28);
+
+    particles.forEach(function(pt){
+      ctx.globalAlpha = Math.max(0, pt.life);
+      ctx.fillStyle = pt.color;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+
+    const cy = bobY != null ? bobY : coin.y;
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.ellipse(coin.x + 3, cy + coin.radius + 4, coin.radius * 0.85, 5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#000";
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(coin.x, cy);
+    ctx.rotate(coin.rotation);
+    const rg = ctx.createRadialGradient(-6, -6, 2, 0, 0, coin.radius);
+    rg.addColorStop(0, "#fff3b0");
+    rg.addColorStop(0.45, "#ffc42e");
+    rg.addColorStop(1, "#c97a00");
+    ctx.beginPath();
+    ctx.arc(0, 0, coin.radius, 0, Math.PI * 2);
+    ctx.fillStyle = rg;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#8a5300";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, coin.radius * 0.62, 0, Math.PI * 2);
+    ctx.strokeStyle = "#b87300";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "#8a5300";
+    ctx.font = "bold 16px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("★", 0, 1);
+    ctx.restore();
+  };
+
+  const finishGame = function(zone){
+    if(finishedRef.current) return;
+    finishedRef.current = true;
+    coinRef.current.landed = true;
+    coinRef.current.active = false;
+    if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if(timeoutRef.current) clearTimeout(timeoutRef.current);
+
+    setGameStage("landed");
+    setResultText(cdZoneLabel(zone));
+    playCoinSfx("vault", true);
+    try{ if(navigator.vibrate) navigator.vibrate(40); }catch(e){}
+
+    for(var i = 0; i < 18; i++){
+      particlesRef.current.push({
+        x: coinRef.current.x,
+        y: coinRef.current.y,
+        vx: (Math.random() - 0.5) * 6,
+        vy: (Math.random() - 0.5) * 6 - 2,
+        r: 2 + Math.random() * 3,
+        life: 1,
+        color: Math.random() > 0.5 ? "#ffc42e" : "#fff"
+      });
+    }
+
+    Promise.resolve(awardReward(reward)).then(function(result){
+      awardResultRef.current = result || null;
+      const amt = result && result.amountAwarded != null ? result.amountAwarded : (reward.amount || 1);
+      setResultAmount(amt);
+      setBoostFlash(!!(result && result.boostApplied));
+      setTimeout(function(){
+        setGameStage("complete");
+        onComplete(zone, result || null);
+      }, 900);
+    }).catch(function(){
+      setResultAmount(reward.amount || 1);
+      setTimeout(function(){
+        setGameStage("complete");
+        onComplete(zone, null);
+      }, 900);
+    });
+  };
+
+  const reflectCircle = function(coin, cx, cy, rad){
+    const dx = coin.x - cx;
+    const dy = coin.y - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+    const min = coin.radius + rad;
+    if(dist >= min) return false;
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const overlap = min - dist;
+    coin.x += nx * overlap;
+    coin.y += ny * overlap;
+    const vn = coin.vx * nx + coin.vy * ny;
+    if(vn < 0){
+      coin.vx -= (1 + CD_BOUNCE) * vn * nx;
+      coin.vy -= (1 + CD_BOUNCE) * vn * ny;
+    }
+    coin.vx += (Math.random() - 0.5) * 0.55;
+    coin.rotationSpeed += (Math.random() - 0.5) * 0.2;
+    return true;
+  };
+
+  const collideBumper = function(coin, b){
+    const dx = b.x2 - b.x1;
+    const dy = b.y2 - b.y1;
+    const len2 = dx * dx + dy * dy || 1;
+    let t = ((coin.x - b.x1) * dx + (coin.y - b.y1) * dy) / len2;
+    t = clamp(t, 0, 1);
+    const px = b.x1 + t * dx;
+    const py = b.y1 + t * dy;
+    const ox = coin.x - px;
+    const oy = coin.y - py;
+    const dist = Math.sqrt(ox * ox + oy * oy) || 0.0001;
+    const min = coin.radius + b.thickness * 0.45;
+    if(dist >= min) return false;
+    const nx = ox / dist;
+    const ny = oy / dist;
+    coin.x += nx * (min - dist);
+    coin.y += ny * (min - dist);
+    const vn = coin.vx * nx + coin.vy * ny;
+    if(vn < 0){
+      coin.vx -= (1 + CD_BOUNCE * 0.9) * vn * nx;
+      coin.vy -= (1 + CD_BOUNCE * 0.9) * vn * ny;
+    }
+    coin.vx *= 0.92;
+    coin.vy *= 0.92;
+    coin.rotationSpeed += (Math.random() - 0.5) * 0.15;
+    return true;
+  };
+
+  const tick = function(){
+    const canvas = canvasRef.current;
+    if(!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const coin = coinRef.current;
+    const movers = moversRef.current;
+    const now = Date.now();
+
+    movers.forEach(function(m){
+      m.x += m.vx;
+      if(m.x < 20 || m.x + m.w > CD_W - 20) m.vx *= -1;
+    });
+
+    let bobY = null;
+    if(!coin.active && !coin.landed){
+      bobY = coin.y + Math.sin(now / 320) * 4;
+    }
+
+    if(coin.active && !coin.landed){
+      const steering = pointerActiveRef.current
+        ? pointerSteerRef.current
+        : (buttonSteerRef.current || keySteerRef.current || (tiltEnabledRef.current ? tiltRef.current : 0));
+
+      coin.vy += CD_GRAVITY;
+      coin.vx += steering * CD_TILT * 18;
+      coin.vx *= CD_AIR;
+      coin.vy *= CD_AIR;
+      coin.vx = clamp(coin.vx, -CD_MAX_SPEED, CD_MAX_SPEED);
+      coin.vy = clamp(coin.vy, -CD_MAX_SPEED, CD_MAX_SPEED);
+      coin.x += coin.vx;
+      coin.y += coin.vy;
+      coin.rotation += coin.rotationSpeed;
+      coin.rotationSpeed *= 0.995;
+
+      if(coin.x - coin.radius < 10){
+        coin.x = 10 + coin.radius;
+        coin.vx = Math.abs(coin.vx) * CD_BOUNCE;
+      }
+      if(coin.x + coin.radius > CD_W - 10){
+        coin.x = CD_W - 10 - coin.radius;
+        coin.vx = -Math.abs(coin.vx) * CD_BOUNCE;
+      }
+
+      var hitPeg = false;
+      CD_PEGS.forEach(function(p){
+        if(reflectCircle(coin, p.x, p.y, p.r)) hitPeg = true;
+      });
+      if(hitPeg && now - pegHitCooldownRef.current > 120){
+        pegHitCooldownRef.current = now;
+        if(Math.random() < 0.35) playCoinSfx("peg", true);
+      }
+
+      CD_BUMPERS.forEach(function(b){ collideBumper(coin, b); });
+
+      movers.forEach(function(m){
+        const cx = m.x + m.w / 2;
+        const cy = m.y + m.h / 2;
+        reflectCircle(coin, cx, cy, Math.max(m.w, m.h) * 0.45);
+      });
+
+      if(startTimeRef.current && now - startTimeRef.current > CD_MAX_MS - 1800){
+        const targetX = CD_W / 2;
+        coin.vx += (targetX - coin.x) * 0.01;
+        coin.vy = Math.max(coin.vy, 2.2);
+      }
+
+      if(coin.y + coin.radius >= CD_LANDING_Y){
+        drawBoard(ctx, coin, movers, particlesRef.current, null);
+        finishGame(cdZoneForX(coin.x));
+        return;
+      }
+    }
+
+    particlesRef.current = particlesRef.current.filter(function(pt){
+      pt.x += pt.vx;
+      pt.y += pt.vy;
+      pt.vy += 0.12;
+      pt.life -= 0.03;
+      return pt.life > 0;
+    });
+
+    drawBoard(ctx, coin, movers, particlesRef.current, bobY);
+    animationFrameRef.current = requestAnimationFrame(tick);
+  };
+
+  const startDrop = function(){
+    if(coinRef.current.active || finishedRef.current) return;
+    const coin = coinRef.current;
+    coin.active = true;
+    coin.vy = 1.2;
+    coin.vx = (Math.random() - 0.5) * 0.8;
+    coin.rotationSpeed = (Math.random() - 0.5) * 0.15;
+    startTimeRef.current = Date.now();
+    setGameStage("dropping");
+    playCoinSfx("whoosh", true);
+
+    if(reducedRef.current){
+      const start = Date.now();
+      const fromY = coin.y;
+      const fromX = coin.x;
+      const ease = function(){
+        if(finishedRef.current) return;
+        const t = clamp((Date.now() - start) / 1100, 0, 1);
+        const e = t * t * (3 - 2 * t);
+        coin.x = fromX + (CD_W / 2 - fromX) * e;
+        coin.y = fromY + (CD_LANDING_Y - coin.radius - fromY) * e;
+        const canvas = canvasRef.current;
+        if(canvas) drawBoard(canvas.getContext("2d"), coin, moversRef.current, particlesRef.current, null);
+        if(t >= 1){
+          finishGame("vault");
+          return;
+        }
+        animationFrameRef.current = requestAnimationFrame(ease);
+      };
+      animationFrameRef.current = requestAnimationFrame(ease);
+      return;
+    }
+
+    timeoutRef.current = setTimeout(function(){
+      if(finishedRef.current) return;
+      const c = coinRef.current;
+      c.x = CD_W / 2;
+      c.y = CD_LANDING_Y - c.radius;
+      finishGame("vault");
+    }, CD_MAX_MS);
+  };
+
+  const enableTiltAndStart = function(){
+    if(coinRef.current.active || finishedRef.current) return;
+    var allowed = false;
+    var finish = function(){
+      setTiltEnabled(allowed);
+      tiltEnabledRef.current = allowed;
+      setTiltUnavailable(!allowed);
+      startDrop();
+    };
+    if(tiltAllowedSetting){
+      try{
+        if(
+          typeof DeviceOrientationEvent !== "undefined" &&
+          typeof DeviceOrientationEvent.requestPermission === "function"
+        ){
+          DeviceOrientationEvent.requestPermission().then(function(result){
+            allowed = result === "granted";
+            finish();
+          }).catch(function(){
+            allowed = false;
+            finish();
+          });
+          return;
+        }
+        if(typeof DeviceOrientationEvent !== "undefined"){
+          allowed = true;
+        }
+      }catch(e){
+        allowed = false;
+      }
+    }
+    finish();
+  };
+
+  useEffect(function(){
+    const onOrient = function(e){
+      const gamma = Number(e.gamma) || 0;
+      tiltRef.current = clamp(gamma / 30, -1, 1);
+    };
+    if(tiltEnabled){
+      window.addEventListener("deviceorientation", onOrient);
+    }
+    return function(){
+      window.removeEventListener("deviceorientation", onOrient);
+    };
+  }, [tiltEnabled]);
+
+  useEffect(function(){
+    const onKeyDown = function(e){
+      if(e.key === "ArrowLeft" || e.key === "a" || e.key === "A"){
+        e.preventDefault();
+        keySteerRef.current = -1;
+      }else if(e.key === "ArrowRight" || e.key === "d" || e.key === "D"){
+        e.preventDefault();
+        keySteerRef.current = 1;
+      }
+    };
+    const onKeyUp = function(e){
+      if(e.key === "ArrowLeft" || e.key === "a" || e.key === "A" || e.key === "ArrowRight" || e.key === "d" || e.key === "D"){
+        keySteerRef.current = 0;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    animationFrameRef.current = requestAnimationFrame(tick);
+    return function(){
+      cancelAnimationFrame(animationFrameRef.current);
+      clearTimeout(timeoutRef.current);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      buttonSteerRef.current = 0;
+      keySteerRef.current = 0;
+    };
+  }, []);
+
+  const onPointerDown = function(e){
+    if(gameStage !== "dropping") return;
+    pointerActiveRef.current = true;
+    pointerStartXRef.current = e.clientX;
+    pointerSteerRef.current = 0;
+    try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(err){}
+  };
+  const onPointerMove = function(e){
+    if(!pointerActiveRef.current) return;
+    const deltaX = e.clientX - pointerStartXRef.current;
+    pointerSteerRef.current = clamp(deltaX / 80, -1, 1);
+  };
+  const onPointerUp = function(){
+    pointerActiveRef.current = false;
+    pointerSteerRef.current = 0;
+  };
+
+  const handleClose = function(){
+    if(finishedRef.current){
+      onClose();
+      return;
+    }
+    finishedRef.current = true;
+    if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if(timeoutRef.current) clearTimeout(timeoutRef.current);
+    Promise.resolve(awardReward(reward)).then(function(result){
+      onComplete("vault", result || null);
+    }).catch(function(){
+      onComplete("vault", null);
+    });
+  };
+
+  const instruct = tiltUnavailable || !tiltAllowedSetting
+    ? "Drag or use the arrows to guide it"
+    : "Tilt to guide it into your vault";
+
+  return (
+    <div className="modal coin-drop-modal">
+      <div className={"coin-drop-sheet kid-"+kid.id} onClick={function(e){ e.stopPropagation(); }}>
+        <div className="coin-drop-head">
+          <h2 className="comic">You earned a coin!</h2>
+          <p className="coin-drop-instructions">{instruct}</p>
+          {(tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && (
+            <p className="coin-drop-toast">Tilt unavailable · Drag or use the arrows</p>
+          )}
+        </div>
+
+        <div
+          className="coin-drop-board"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <canvas
+            ref={canvasRef}
+            className="coin-drop-canvas"
+            width={CD_W}
+            height={CD_H}
+            role="img"
+            aria-label="Coin drop game. Guide the coin into the vault."
+          />
+          {gameStage === "landed" || gameStage === "complete" ? (
+            <div className="coin-drop-result">
+              <div className="comic burst-label">{resultText || "SUPER DROP!"}</div>
+              {boostFlash && <div className="coin-drop-boost">2× POWER-UP!</div>}
+              {resultAmount != null && <div className="coin-drop-amt">+{resultAmount} coin{resultAmount === 1 ? "" : "s"}</div>}
+            </div>
+          ) : null}
+        </div>
+
+        {gameStage === "ready" && (
+          <button className="btn go coin-drop-start" type="button" onClick={enableTiltAndStart}>
+            Drop Coin
+          </button>
+        )}
+
+        <div className="coin-drop-controls">
+          <button
+            type="button"
+            className="coin-drop-arrow"
+            aria-label="Steer coin left"
+            onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = -1; }}
+            onPointerUp={function(){ buttonSteerRef.current = 0; }}
+            onPointerLeave={function(){ buttonSteerRef.current = 0; }}
+            onPointerCancel={function(){ buttonSteerRef.current = 0; }}
+          >◀ LEFT</button>
+          <button
+            type="button"
+            className="coin-drop-arrow"
+            aria-label="Steer coin right"
+            onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = 1; }}
+            onPointerUp={function(){ buttonSteerRef.current = 0; }}
+            onPointerLeave={function(){ buttonSteerRef.current = 0; }}
+            onPointerCancel={function(){ buttonSteerRef.current = 0; }}
+          >RIGHT ▶</button>
+        </div>
+
+        <button className="btn close" type="button" onClick={handleClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
 /* ================= APP ================= */
 function App(){
   const initial = useMemo(function(){ return loadState(); },[]);
@@ -492,8 +1196,11 @@ function App(){
   const [log,setLog] = useState(initial.log);
   const [unlocks,setUnlocks] = useState(initial.unlocks);
   const [boosts,setBoosts] = useState(initial.boosts);
-  const [modal,setModal] = useState(null); // vault | timer | history | settings | profile | unlock
+  const [settings,setSettings] = useState(initial.settings || defaultSettings());
+  const [pendingReward,setPendingReward] = useState(initial.pendingReward || null);
+  const [modal,setModal] = useState(null); // vault | timer | history | settings | profile | unlock | coinDrop
   const [unlockQueue,setUnlockQueue] = useState([]);
+  const unlockQueueRef = useRef([]);
   const [timerJob,setTimerJob] = useState(null);
   const [secs,setSecs] = useState(120);
   const [running,setRunning] = useState(false);
@@ -509,6 +1216,11 @@ function App(){
   const logRef = useRef(initial.log);
   const unlocksRef = useRef(initial.unlocks);
   const boostsRef = useRef(initial.boosts);
+  const pendingRewardRef = useRef(initial.pendingReward || null);
+  const awardedRewardIdsRef = useRef({});
+  const timerCompletedRef = useRef(false);
+  const deferUnlockModalRef = useRef(false);
+  const recoveryDoneRef = useRef(false);
   const tune = useBrushingTune();
 
   useEffect(function(){
@@ -516,15 +1228,17 @@ function App(){
     logRef.current = log;
     unlocksRef.current = unlocks;
     boostsRef.current = boosts;
-  },[coins,log,unlocks,boosts]);
+    pendingRewardRef.current = pendingReward;
+  },[coins,log,unlocks,boosts,pendingReward]);
 
   useEffect(function(){
     try{
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        kid:kid, coins:coins, log:log, unlocks:unlocks, boosts:boosts
+        kid:kid, coins:coins, log:log, unlocks:unlocks, boosts:boosts,
+        settings:settings, pendingReward:pendingReward
       }));
     }catch(e){}
-  },[kid,coins,log,unlocks,boosts]);
+  },[kid,coins,log,unlocks,boosts,settings,pendingReward]);
 
   useEffect(function(){
     if(!supabaseReady() || hydratedRef.current) return;
@@ -538,13 +1252,18 @@ function App(){
         return sbFetch("coin_kids?select=id,slug,balance&order=sort_order.asc", {headers: sbHeaders()});
       }),
       sbFetch(
-        "coin_transactions?select=id,kid_id,entry_type,amount,description,source,created_at&order=created_at.desc",
+        "coin_transactions?select=id,kid_id,entry_type,amount,description,source,reward_id,created_at&order=created_at.desc",
         {headers: sbHeaders()}
       ).catch(function(){
         return sbFetch(
-          "coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc",
+          "coin_transactions?select=id,kid_id,entry_type,amount,description,source,created_at&order=created_at.desc",
           {headers: sbHeaders()}
-        );
+        ).catch(function(){
+          return sbFetch(
+            "coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc",
+            {headers: sbHeaders()}
+          );
+        });
       }),
       sbFetch(
         "coin_unlocks?select=id,kid_id,unlock_id,unlock_type,used,unlocked_at&order=unlocked_at.asc",
@@ -582,6 +1301,7 @@ function App(){
           amount: Number(tx.amount) || 0,
           desc: tx.description,
           source: tx.source || null,
+          rewardId: tx.reward_id || null,
           when: formatWhen(tx.created_at)
         });
       });
@@ -707,13 +1427,17 @@ function App(){
         unsynced.push({
           tempId: entry.id,
           slug: slug,
-          body: {
-            kid_id: kidId,
-            entry_type: entry.type === "spent" ? "spent" : "earned",
-            amount: entry.amount,
-            description: entry.desc || "",
-            source: entry.source || null
-          }
+          body: (function(){
+            const body = {
+              kid_id: kidId,
+              entry_type: entry.type === "spent" ? "spent" : "earned",
+              amount: entry.amount,
+              description: entry.desc || "",
+              source: entry.source || null
+            };
+            if(entry.rewardId) body.reward_id = entry.rewardId;
+            return body;
+          })()
         });
       });
     });
@@ -764,6 +1488,7 @@ function App(){
                 amount: Number(tx.amount) || 0,
                 desc: tx.description,
                 source: tx.source || meta.body.source || null,
+                rewardId: tx.reward_id || meta.body.reward_id || null,
                 when: formatWhen(tx.created_at)
               };
               tempIdMap[meta.tempId] = mapped;
@@ -863,6 +1588,7 @@ function App(){
         description: job.desc
       };
       if(job.source) body.source = job.source;
+      if(job.rewardId) body.reward_id = job.rewardId;
       return sbFetch("coin_transactions", {
         method: "POST",
         headers: sbHeaders({"Prefer":"return=representation"}),
@@ -877,7 +1603,8 @@ function App(){
                 ? Object.assign({}, e, {
                     id: row.id,
                     when: formatWhen(row.created_at) || e.when,
-                    source: row.source || e.source || null
+                    source: row.source || e.source || null,
+                    rewardId: row.reward_id || e.rewardId || null
                   })
                 : e;
             });
@@ -885,6 +1612,34 @@ function App(){
           });
         }
         return row;
+      }).catch(function(err){
+        if(job.rewardId && body.reward_id){
+          delete body.reward_id;
+          return sbFetch("coin_transactions", {
+            method: "POST",
+            headers: sbHeaders({"Prefer":"return=representation"}),
+            body: JSON.stringify(body)
+          }).then(function(rows){
+            const row = rows && rows[0] ? rows[0] : null;
+            if(row && job.tempId){
+              setLog(function(l){
+                const next = Object.assign({}, l);
+                next[job.slug] = (l[job.slug]||[]).map(function(e){
+                  return e.id === job.tempId
+                    ? Object.assign({}, e, {
+                        id: row.id,
+                        when: formatWhen(row.created_at) || e.when,
+                        source: row.source || e.source || null
+                      })
+                    : e;
+                });
+                return next;
+              });
+            }
+            return row;
+          });
+        }
+        throw err;
       });
     }
     if(job.kind === "delete"){
@@ -978,7 +1733,7 @@ function App(){
     });
   }
 
-  function syncInsertTx(slug, entryType, amount, desc, tempId, source){
+  function syncInsertTx(slug, entryType, amount, desc, tempId, source, rewardId){
     return enqueueSync({
       kind:"insert",
       slug:slug,
@@ -986,15 +1741,17 @@ function App(){
       amount:amount,
       desc:desc,
       tempId:tempId,
-      source:source || null
+      source:source || null,
+      rewardId:rewardId || null
     });
   }
 
-  function applyUnlocks(slug, nextLog, nextCoins){
+  function applyUnlocks(slug, nextLog, nextCoins, opts){
+    opts = opts || {};
     const owned = {};
     (unlocksRef.current[slug] || []).forEach(function(u){ owned[u.id] = true; });
     const fresh = findNewUnlocks(slug, nextLog, nextCoins, owned);
-    if(!fresh.length) return;
+    if(!fresh.length) return [];
 
     const nextUnlocks = Object.assign({}, unlocksRef.current);
     nextUnlocks[slug] = (nextUnlocks[slug] || []).concat(fresh);
@@ -1012,11 +1769,19 @@ function App(){
       });
     });
 
-    setUnlockQueue(function(q){ return q.concat(fresh.map(function(u){
+    const queued = fresh.map(function(u){
       return Object.assign({}, u, {slug: slug});
-    })); });
-    try{ tune.fanfare(); }catch(e){}
-    setModal("unlock");
+    });
+    unlockQueueRef.current = (unlockQueueRef.current || []).concat(queued);
+    setUnlockQueue(function(q){
+      return q.concat(queued);
+    });
+
+    if(!opts.deferCelebration && !deferUnlockModalRef.current){
+      try{ tune.fanfare(); }catch(e){}
+      setModal("unlock");
+    }
+    return fresh;
   }
 
   const weekend = useMemo(function(){const d=new Date().getDay();return d===0||d===6;},[]);
@@ -1029,6 +1794,7 @@ function App(){
   const dismissUnlock = function(){
     setUnlockQueue(function(q){
       const rest = q.slice(1);
+      unlockQueueRef.current = rest;
       if(!rest.length) setModal(null);
       return rest;
     });
@@ -1036,12 +1802,26 @@ function App(){
 
   const earn = function(amount,desc,source,opts){
     opts = opts || {};
-    const slug = opts.slug || kid;
+    const slug = opts.slug || opts.kidId || kid;
     const skipUnlockCheck = !!opts.skipUnlockCheck;
+    const deferCelebration = !!opts.deferCelebration || deferUnlockModalRef.current;
     let award = amount;
     let doubled = false;
     const nextBoosts = Object.assign({}, boostsRef.current);
     const kidBoost = Object.assign({}, nextBoosts[slug] || defaultBoost());
+
+    if(opts.rewardId){
+      if(awardedRewardIdsRef.current[opts.rewardId]){
+        return {amountAwarded:0, boostApplied:false, duplicate:true, transaction:null};
+      }
+      const already = (logRef.current[slug] || []).some(function(tx){
+        return tx && tx.rewardId && tx.rewardId === opts.rewardId;
+      });
+      if(already){
+        awardedRewardIdsRef.current[opts.rewardId] = true;
+        return {amountAwarded:0, boostApplied:false, duplicate:true, transaction:null};
+      }
+    }
 
     if(!opts.skipDouble && kidBoost.doubleEarnsLeft > 0){
       award = amount * 2;
@@ -1054,14 +1834,19 @@ function App(){
 
     const when = new Date().toLocaleString("en-GB");
     const tempId = "local-"+Date.now()+"-"+Math.floor(Math.random()*999);
+    let finalDesc = desc;
+    if(doubled) finalDesc = desc + " · 2× power-up";
     const entry = {
       id:tempId,
       type:"earned",
       amount:award,
-      desc:desc,
+      desc:finalDesc,
       when:when,
-      source: source || null
+      source: source || null,
+      rewardId: opts.rewardId || null
     };
+    if(opts.rewardId) awardedRewardIdsRef.current[opts.rewardId] = true;
+
     let newBal = 0;
     const nextCoins = Object.assign({}, coinsRef.current);
     newBal = (nextCoins[slug]||0) + award;
@@ -1074,17 +1859,26 @@ function App(){
     logRef.current = nextLog;
     setLog(nextLog);
 
-    if(doubled) flash("2× power-up! +"+award+" for "+KIDS[slug].name+"!");
-    else flash("+"+award+" for "+KIDS[slug].name+"!");
+    if(!opts.quiet){
+      if(doubled) flash("2× power-up! +"+award+" for "+KIDS[slug].name+"!");
+      else flash("+"+award+" for "+KIDS[slug].name+"!");
+    }
 
     Promise.all([
-      syncInsertTx(slug, "earned", award, desc, tempId, source),
+      syncInsertTx(slug, "earned", award, finalDesc, tempId, source, opts.rewardId || null),
       syncBalance(slug, newBal, kidBoost)
     ]).then(function(){
       setCloud("online");
     }).catch(function(){ setCloud("offline"); });
 
-    if(!skipUnlockCheck) applyUnlocks(slug, nextLog, nextCoins);
+    if(!skipUnlockCheck) applyUnlocks(slug, nextLog, nextCoins, {deferCelebration: deferCelebration});
+
+    return {
+      amountAwarded: award,
+      boostApplied: doubled,
+      duplicate: false,
+      transaction: entry
+    };
   };
 
   const spend = function(amount,desc,source,opts){
@@ -1232,6 +2026,11 @@ function App(){
     setUnlocks(clearedUnlocks);
     setBoosts(clearedBoosts);
     setUnlockQueue([]);
+    unlockQueueRef.current = [];
+    pendingRewardRef.current = null;
+    setPendingReward(null);
+    awardedRewardIdsRef.current = {};
+    timerCompletedRef.current = false;
     flash("All kids reset to 0");
     setModal(null);
 
@@ -1251,24 +2050,168 @@ function App(){
     Promise.all(tasks).then(function(){ setCloud("online"); }).catch(function(){ setCloud("offline"); });
   };
 
+  const clearPendingReward = function(){
+    pendingRewardRef.current = null;
+    setPendingReward(null);
+  };
+
+  const completePendingReward = function(reward){
+    try{
+      if(!reward || reward.awarded) return Promise.resolve(null);
+      const slug = reward.kidId;
+      if(reward.rewardId && awardedRewardIdsRef.current[reward.rewardId]){
+        clearPendingReward();
+        return Promise.resolve({amountAwarded:0, boostApplied:false, duplicate:true});
+      }
+      const alreadyExists = (logRef.current[slug] || []).some(function(tx){
+        return tx && reward.rewardId && tx.rewardId === reward.rewardId;
+      });
+      if(alreadyExists){
+        clearPendingReward();
+        return Promise.resolve({amountAwarded:0, boostApplied:false, duplicate:true});
+      }
+
+      deferUnlockModalRef.current = true;
+      const result = earn(
+        reward.amount,
+        reward.description,
+        reward.source,
+        {
+          kidId: slug,
+          rewardId: reward.rewardId,
+          deferCelebration: true,
+          quiet: modal === "coinDrop"
+        }
+      );
+      clearPendingReward();
+      return Promise.resolve(result);
+    }catch(err){
+      try{
+        deferUnlockModalRef.current = true;
+        const fallback = earn(
+          (reward && reward.amount) || 1,
+          (reward && reward.description) || "Brush teeth",
+          (reward && reward.source) || "brush-am",
+          {
+            kidId: (reward && reward.kidId) || kid,
+            rewardId: reward && reward.rewardId,
+            deferCelebration: true
+          }
+        );
+        clearPendingReward();
+        return Promise.resolve(fallback);
+      }catch(e2){
+        clearPendingReward();
+        return Promise.resolve(null);
+      }
+    }
+  };
+
+  const finishCoinDropFlow = function(){
+    deferUnlockModalRef.current = false;
+    setPendingReward(null);
+    pendingRewardRef.current = null;
+    setTimerJob(null);
+    setDone(false);
+    setRunning(false);
+    if(unlockQueueRef.current && unlockQueueRef.current.length){
+      try{ tune.fanfare(); }catch(e){}
+      setModal("unlock");
+    }else{
+      setModal(null);
+    }
+  };
+
+  const handleCoinDropComplete = function(){
+    finishCoinDropFlow();
+  };
+
+  const handleCloseCoinDrop = function(){
+    completePendingReward(pendingRewardRef.current || pendingReward).then(function(){
+      finishCoinDropFlow();
+    });
+  };
+
   /* timer */
-  const openTimer = (job)=>{ setTimerJob(job); setSecs(120); setRunning(false); setDone(false); setModal("timer"); };
-  const closeTimer = ()=>{ tune.stop(); setRunning(false); setModal(null); setTimerJob(null); };
-  useEffect(()=>{
+  const openTimer = function(job){
+    timerCompletedRef.current = false;
+    setTimerJob(job);
+    setSecs(120);
+    setRunning(false);
+    setDone(false);
+    setModal("timer");
+  };
+  const closeTimer = function(){
+    tune.stop();
+    setRunning(false);
+    setModal(null);
+    setTimerJob(null);
+    timerCompletedRef.current = false;
+  };
+
+  useEffect(function(){
     if(!running) return;
     if(secs<=0){
-      setRunning(false); tune.stop(); tune.fanfare(); setDone(true);
+      if(timerCompletedRef.current) return;
+      timerCompletedRef.current = true;
+      setRunning(false);
+      tune.stop();
+
       const job = timerJob;
-      earn(
-        job ? job.coins : 1,
-        job ? job.name+(job.sub?" ("+job.sub+")":"") : "Brush teeth",
-        job ? job.id : "brush-am"
-      );
+      const desc = job
+        ? job.name+(job.sub?" ("+job.sub+")":"")
+        : "Brush teeth";
+      const source = job ? job.id : "brush-am";
+      const amount = job ? job.coins : 1;
+      const reward = {
+        rewardId: makeRewardId(),
+        kidId: kid,
+        amount: amount,
+        description: desc,
+        source: source,
+        createdAt: new Date().toISOString(),
+        awarded: false
+      };
+
+      if(settings.coinDropEnabled !== false){
+        pendingRewardRef.current = reward;
+        setPendingReward(reward);
+        deferUnlockModalRef.current = true;
+        setModal("coinDrop");
+        return;
+      }
+
+      tune.fanfare();
+      setDone(true);
+      earn(amount, desc, source, {kidId: kid, rewardId: reward.rewardId});
       return;
     }
-    const t=setTimeout(()=>setSecs(s=>s-1),1000);
-    return ()=>clearTimeout(t);
+    const t=setTimeout(function(){ setSecs(function(s){ return s-1; }); },1000);
+    return function(){ clearTimeout(t); };
   },[running,secs]);
+
+  /* Recover unresolved pending brushing rewards on boot */
+  useEffect(function(){
+    if(recoveryDoneRef.current) return;
+    recoveryDoneRef.current = true;
+    const pending = pendingRewardRef.current || pendingReward;
+    if(!pending || pending.awarded) return;
+    const exists = (logRef.current[pending.kidId] || []).some(function(tx){
+      return tx && tx.rewardId && tx.rewardId === pending.rewardId;
+    });
+    if(exists){
+      clearPendingReward();
+      return;
+    }
+    // Prefer automatic recovery if unclear whether the game was already played
+    completePendingReward(pending).then(function(){
+      deferUnlockModalRef.current = false;
+      if(unlockQueueRef.current && unlockQueueRef.current.length){
+        try{ tune.fanfare(); }catch(e){}
+        setModal("unlock");
+      }
+    });
+  },[]);
 
   /* coin spill canvas — gravity follows phone tilt when available */
   useEffect(()=>{
@@ -1547,7 +2490,7 @@ function App(){
                 <div className="celebrate">
                   <div className="spin" style={{fontSize:"3.5rem"}}>🪙</div>
                   <div className="comic pop">Well done, {K.name}!</div>
-                  <div style={{fontWeight:900,marginTop:"6px"}}>You earned 1 coin ⭐</div>
+                  <div style={{fontWeight:900,marginTop:"6px"}}>You earned your brushing coin ⭐</div>
                   <button className="btn go" onClick={closeTimer}>Brilliant!</button>
                 </div>
               ):(
@@ -1572,6 +2515,18 @@ function App(){
             </div>
           </div>
         </div>
+      )}
+
+      {/* ---------------- COIN DROP MINI-GAME ---------------- */}
+      {modal==="coinDrop" && pendingReward && (
+        <CoinDropGame
+          kid={Object.assign({}, KIDS[pendingReward.kidId] || K, {id: pendingReward.kidId || kid})}
+          reward={pendingReward}
+          tiltControlsEnabled={settings.tiltControlsEnabled !== false}
+          awardReward={completePendingReward}
+          onComplete={handleCoinDropComplete}
+          onClose={handleCoinDropComplete}
+        />
       )}
 
       {/* ---------------- HISTORY MODAL ---------------- */}
@@ -1722,6 +2677,38 @@ function App(){
               <div className="settings-note">
                 Unlocks: {(unlocks[kid]||[]).length} · Boosts: 2×{kidBoost.doubleEarnsLeft}{kidBoost.freeSwitch?" · Free Switch":""}
               </div>
+
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={settings.coinDropEnabled !== false}
+                  onChange={function(e){
+                    setSettings(function(s){
+                      return Object.assign({}, s, {coinDropEnabled: e.target.checked});
+                    });
+                  }}
+                />
+                <span>
+                  <strong>Brushing Coin Drop Game</strong>
+                  <em>Play a short tilt game after brushing.</em>
+                </span>
+              </label>
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={settings.tiltControlsEnabled !== false}
+                  onChange={function(e){
+                    setSettings(function(s){
+                      return Object.assign({}, s, {tiltControlsEnabled: e.target.checked});
+                    });
+                  }}
+                />
+                <span>
+                  <strong>Tilt controls</strong>
+                  <em>Use device tilt in Coin Drop when available.</em>
+                </span>
+              </label>
+
               <button className="btn undo" onClick={undoLast} disabled={!log[kid].length}>↩ Undo last for {K.name}</button>
               <button className="btn stop" onClick={resetAll}>Reset all kids to 0</button>
               <button className="btn close" onClick={()=>setModal(null)}>Close</button>

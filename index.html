@@ -394,6 +394,77 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
 .cog-btn:active{-webkit-transform:translateY(2px);transform:translateY(2px);box-shadow:0 2px 0 rgba(0,0,0,.55)}
 .settings-note{text-align:center;font-weight:800;color:#555;font-size:.92rem;margin:4px 0 10px}
 .settings-bal{text-align:center;font-weight:900;font-size:1.05rem;margin-bottom:8px}
+.settings-toggle{
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-align:flex-start;-webkit-align-items:flex-start;align-items:flex-start;
+  gap:10px;background:#fff;border:3px solid #000;border-radius:12px;
+  padding:10px 12px;margin:8px 0;cursor:pointer;text-align:left;
+}
+.settings-toggle input{width:20px;height:20px;margin-top:2px;flex-shrink:0}
+.settings-toggle span{display:block}
+.settings-toggle strong{display:block;font-size:.95rem;color:#111}
+.settings-toggle em{display:block;font-style:normal;font-weight:700;font-size:.8rem;color:#555;margin-top:2px}
+
+/* ---------- COIN DROP MINI-GAME ---------- */
+.coin-drop-modal{z-index:120}
+.coin-drop-sheet{
+  width:100%;max-width:520px;max-height:94vh;overflow:hidden;
+  border:5px solid #000;border-radius:20px;background:#fdf6e3;background:var(--cream);
+  box-shadow:0 14px 0 rgba(0,0,0,.65);
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;
+}
+.coin-drop-head{
+  padding:12px 14px;text-align:center;color:#fff;border-bottom:4px solid #000;flex-shrink:0;
+}
+.coin-drop-head h2{font-size:1.55rem;margin:0}
+.coin-drop-sheet.kid-sam .coin-drop-head{
+  background:#e85d04;background:-webkit-linear-gradient(290deg,#ffb347,#e85d04);background:linear-gradient(160deg,#ffb347,#e85d04);
+}
+.coin-drop-sheet.kid-isaac .coin-drop-head{
+  background:#0b3d91;background:-webkit-linear-gradient(290deg,#5aa9ff,#0b3d91);background:linear-gradient(160deg,#5aa9ff,#0b3d91);
+}
+.coin-drop-sheet.kid-ben .coin-drop-head{
+  background:#8b0000;background:-webkit-linear-gradient(290deg,#ff5b5b,#8b0000);background:linear-gradient(160deg,#ff5b5b,#8b0000);
+}
+.coin-drop-instructions{margin:6px 0 0;font-weight:800;font-size:.92rem;color:rgba(255,255,255,.95)}
+.coin-drop-toast{margin:6px 0 0;font-weight:900;font-size:.78rem;color:#fff3b0}
+.coin-drop-board{
+  position:relative;margin:12px;border:4px solid #000;border-radius:16px;overflow:hidden;
+  background:#04113d;background:-webkit-radial-gradient(50% 0%, circle, #1a3fa0,#04113d 78%);background:radial-gradient(circle at 50% 0%,#1a3fa0,#04113d 78%);
+  flex-shrink:1;min-height:0;
+}
+.coin-drop-canvas{display:block;width:100%;height:auto;touch-action:none;-ms-touch-action:none}
+.coin-drop-start{margin:0 12px 8px;width:auto}
+.coin-drop-controls{
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  gap:12px;padding:0 12px 8px;
+}
+.coin-drop-arrow{
+  -webkit-box-flex:1;-webkit-flex:1;flex:1;min-height:56px;border:3px solid #000;border-radius:12px;
+  background:#ffc42e;background:var(--gold);color:#111;
+  font-family:'Luckiest Guy',Impact,sans-serif;font-size:1rem;letter-spacing:1px;
+  box-shadow:0 5px 0 rgba(0,0,0,.7);cursor:pointer;touch-action:none;-ms-touch-action:none;
+}
+.coin-drop-arrow:active{-webkit-transform:translateY(3px);transform:translateY(3px);box-shadow:0 2px 0 rgba(0,0,0,.7)}
+.coin-drop-sheet > .btn.close{margin:0 12px 12px;width:auto}
+.coin-drop-result{
+  position:absolute;left:0;right:0;top:28%;text-align:center;pointer-events:none;
+  -webkit-animation:pop .45s ease-out;animation:pop .45s ease-out;
+}
+.coin-drop-result .burst-label{
+  display:inline-block;background:#ffc42e;background:var(--gold);color:#111;
+  border:4px solid #000;border-radius:14px;padding:8px 16px;font-size:1.7rem;
+  box-shadow:0 6px 0 rgba(0,0,0,.55);-webkit-transform:rotate(-4deg);transform:rotate(-4deg);
+}
+.coin-drop-boost{
+  margin-top:10px;font-family:'Luckiest Guy',Impact,sans-serif;font-size:1.2rem;color:#ffc42e;
+  text-shadow:0 3px 0 #000;
+}
+.coin-drop-amt{
+  margin-top:6px;font-family:'Luckiest Guy',Impact,sans-serif;font-size:1.5rem;color:#fff;
+  text-shadow:0 3px 0 #000;
+}
 
 #coinCanvas{width:100%;height:auto;background:#04113d;background:-webkit-radial-gradient(50% 30%, circle, #123a8f,#04113d);background:radial-gradient(circle at 50% 30%,#123a8f,#04113d);border:3px solid #000;border-radius:12px;display:block}
 

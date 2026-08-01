@@ -4,6 +4,7 @@ function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) 
 function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
 function _iterableToArrayLimit(r, l) { var t = null == r ? null : "undefined" != typeof Symbol && r[Symbol.iterator] || r["@@iterator"]; if (null != t) { var e, n, i, u, a = [], f = !0, o = !1; try { if (i = (t = t.call(r)).next, 0 === l) { if (Object(t) !== t) return; f = !1; } else for (; !(f = (e = i.call(t)).done) && (a.push(e.value), a.length !== l); f = !0); } catch (r) { o = !0, n = r; } finally { try { if (!f && null != t.return && (u = t.return(), Object(u) !== u)) return; } finally { if (o) throw n; } } return a; } }
 function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
+function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 /* Small polyfills for iOS 10–12 Safari and older smart-TV Chromium */
 (function () {
   if (!String.prototype.padStart) {
@@ -559,6 +560,106 @@ function normalizeUnlockList(list) {
     };
   });
 }
+function defaultSettings() {
+  return {
+    coinDropEnabled: true,
+    tiltControlsEnabled: true
+  };
+}
+function normalizeSettings(raw) {
+  var base = defaultSettings();
+  if (!raw || _typeof(raw) !== "object") return base;
+  return {
+    coinDropEnabled: raw.coinDropEnabled !== false,
+    tiltControlsEnabled: raw.tiltControlsEnabled !== false
+  };
+}
+function normalizePendingReward(raw) {
+  if (!raw || _typeof(raw) !== "object" || !raw.rewardId || !raw.kidId) return null;
+  if (!KIDS[raw.kidId]) return null;
+  return {
+    rewardId: String(raw.rewardId),
+    kidId: raw.kidId,
+    amount: Math.max(1, Number(raw.amount) || 1),
+    description: raw.description || "Brush teeth",
+    source: raw.source || "brush-am",
+    createdAt: raw.createdAt || new Date().toISOString(),
+    awarded: !!raw.awarded
+  };
+}
+function makeRewardId() {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch (e) {}
+  return "rw-" + Date.now() + "-" + Math.floor(Math.random() * 1e9);
+}
+function clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
+}
+function prefersReducedMotion() {
+  try {
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  } catch (e) {
+    return false;
+  }
+}
+function playCoinSfx(kind, enabled) {
+  if (enabled === false) return;
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    var ctx = new AC();
+    var now = ctx.currentTime;
+    if (kind === "whoosh") {
+      var o = ctx.createOscillator();
+      var g = ctx.createGain();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(420, now);
+      o.frequency.exponentialRampToValueAtTime(120, now + 0.28);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.1, now + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(now);
+      o.stop(now + 0.32);
+    } else if (kind === "peg") {
+      var _o = ctx.createOscillator();
+      var _g = ctx.createGain();
+      _o.type = "square";
+      _o.frequency.value = 880 + Math.random() * 120;
+      _g.gain.setValueAtTime(0.0001, now);
+      _g.gain.exponentialRampToValueAtTime(0.05, now + 0.01);
+      _g.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+      _o.connect(_g);
+      _g.connect(ctx.destination);
+      _o.start(now);
+      _o.stop(now + 0.1);
+    } else if (kind === "vault") {
+      [660, 880, 1046].forEach(function (f, i) {
+        var o = ctx.createOscillator();
+        var g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.value = f;
+        var t = now + i * 0.07;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.25);
+      });
+    }
+    setTimeout(function () {
+      try {
+        ctx.close();
+      } catch (e) {}
+    }, 800);
+  } catch (e) {}
+}
 function loadState() {
   try {
     var raw = localStorage.getItem(STORAGE_KEY);
@@ -568,7 +669,9 @@ function loadState() {
         coins: Object.assign({}, DEFAULT_COINS),
         log: emptyLog(),
         unlocks: emptyUnlocks(),
-        boosts: emptyBoosts()
+        boosts: emptyBoosts(),
+        settings: defaultSettings(),
+        pendingReward: null
       };
     }
     var parsed = JSON.parse(raw);
@@ -593,7 +696,9 @@ function loadState() {
         isaac: normalizeUnlockList(parsed.unlocks && parsed.unlocks.isaac),
         ben: normalizeUnlockList(parsed.unlocks && parsed.unlocks.ben)
       },
-      boosts: boosts
+      boosts: boosts,
+      settings: normalizeSettings(parsed.settings),
+      pendingReward: normalizePendingReward(parsed.pendingReward)
     };
   } catch (e) {
     return {
@@ -601,7 +706,9 @@ function loadState() {
       coins: Object.assign({}, DEFAULT_COINS),
       log: emptyLog(),
       unlocks: emptyUnlocks(),
-      boosts: emptyBoosts()
+      boosts: emptyBoosts(),
+      settings: defaultSettings(),
+      pendingReward: null
     };
   }
 }
@@ -737,63 +844,757 @@ function findNewUnlocks(slug, log, coins, ownedIds) {
   return fresh;
 }
 
+/* ---------- Coin Drop mini-game (brushing reward collection) ---------- */
+var CD_W = 360;
+var CD_H = 520;
+var CD_GRAVITY = 0.18;
+var CD_AIR = 0.995;
+var CD_BOUNCE = 0.62;
+var CD_MAX_SPEED = 8;
+var CD_TILT = 0.025;
+var CD_LANDING_Y = 448;
+var CD_MAX_MS = 15000;
+var CD_PEGS = [{
+  x: 90,
+  y: 110,
+  r: 8
+}, {
+  x: 180,
+  y: 110,
+  r: 8
+}, {
+  x: 270,
+  y: 110,
+  r: 8
+}, {
+  x: 60,
+  y: 165,
+  r: 8
+}, {
+  x: 135,
+  y: 165,
+  r: 8
+}, {
+  x: 225,
+  y: 165,
+  r: 8
+}, {
+  x: 300,
+  y: 165,
+  r: 8
+}, {
+  x: 90,
+  y: 220,
+  r: 8
+}, {
+  x: 180,
+  y: 220,
+  r: 8
+}, {
+  x: 270,
+  y: 220,
+  r: 8
+}, {
+  x: 120,
+  y: 275,
+  r: 8
+}, {
+  x: 240,
+  y: 275,
+  r: 8
+}, {
+  x: 70,
+  y: 330,
+  r: 8
+}, {
+  x: 180,
+  y: 330,
+  r: 8
+}, {
+  x: 290,
+  y: 330,
+  r: 8
+}];
+var CD_BUMPERS = [{
+  x1: 28,
+  y1: 240,
+  x2: 130,
+  y2: 275,
+  thickness: 10
+}, {
+  x1: 332,
+  y1: 240,
+  x2: 230,
+  y2: 275,
+  thickness: 10
+}, {
+  x1: 50,
+  y1: 370,
+  x2: 150,
+  y2: 400,
+  thickness: 9
+}];
+function cdZoneForX(x) {
+  if (x < 115) return "left";
+  if (x > 245) return "right";
+  return "vault";
+}
+function cdZoneLabel(zone) {
+  if (zone === "left") return "BAM!";
+  if (zone === "right") return "NICE SHOT!";
+  return "SUPER DROP!";
+}
+function CoinDropGame(props) {
+  var kid = props.kid;
+  var reward = props.reward;
+  var tiltAllowedSetting = props.tiltControlsEnabled !== false;
+  var onComplete = props.onComplete;
+  var onClose = props.onClose;
+  var awardReward = props.awardReward;
+  var canvasRef = useRef(null);
+  var coinRef = useRef({
+    x: CD_W / 2,
+    y: 48,
+    radius: 18,
+    vx: 0,
+    vy: 0,
+    rotation: 0,
+    rotationSpeed: 0,
+    active: false,
+    landed: false
+  });
+  var tiltRef = useRef(0);
+  var pointerSteerRef = useRef(0);
+  var pointerActiveRef = useRef(false);
+  var pointerStartXRef = useRef(0);
+  var buttonSteerRef = useRef(0);
+  var keySteerRef = useRef(0);
+  var animationFrameRef = useRef(0);
+  var finishedRef = useRef(false);
+  var startTimeRef = useRef(0);
+  var timeoutRef = useRef(0);
+  var particlesRef = useRef([]);
+  var moversRef = useRef([{
+    x: 90,
+    y: 300,
+    w: 46,
+    h: 18,
+    vx: 1.1,
+    label: "POW"
+  }, {
+    x: 220,
+    y: 355,
+    w: 52,
+    h: 18,
+    vx: -0.9,
+    label: "ZAP"
+  }]);
+  var pegHitCooldownRef = useRef(0);
+  var awardResultRef = useRef(null);
+  var reducedRef = useRef(prefersReducedMotion());
+  var _useState = useState("ready"),
+    _useState2 = _slicedToArray(_useState, 2),
+    gameStage = _useState2[0],
+    setGameStage = _useState2[1];
+  var _useState3 = useState(false),
+    _useState4 = _slicedToArray(_useState3, 2),
+    tiltEnabled = _useState4[0],
+    setTiltEnabled = _useState4[1];
+  var tiltEnabledRef = useRef(false);
+  var _useState5 = useState(false),
+    _useState6 = _slicedToArray(_useState5, 2),
+    tiltUnavailable = _useState6[0],
+    setTiltUnavailable = _useState6[1];
+  var _useState7 = useState(null),
+    _useState8 = _slicedToArray(_useState7, 2),
+    resultText = _useState8[0],
+    setResultText = _useState8[1];
+  var _useState9 = useState(null),
+    _useState0 = _slicedToArray(_useState9, 2),
+    resultAmount = _useState0[0],
+    setResultAmount = _useState0[1];
+  var _useState1 = useState(false),
+    _useState10 = _slicedToArray(_useState1, 2),
+    boostFlash = _useState10[0],
+    setBoostFlash = _useState10[1];
+  var drawBoard = function drawBoard(ctx, coin, movers, particles, bobY) {
+    var g = ctx.createLinearGradient(0, 0, 0, CD_H);
+    g.addColorStop(0, "#1a3fa0");
+    g.addColorStop(1, "#04113d");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CD_W, CD_H);
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#fff";
+    for (var hx = 12; hx < CD_W; hx += 18) {
+      for (var hy = 12; hy < CD_H - 80; hy += 18) {
+        ctx.beginPath();
+        ctx.arc(hx + hy / 18 % 2 * 6, hy, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,196,46,0.18)";
+    ctx.lineWidth = 2;
+    for (var ray = -4; ray <= 4; ray++) {
+      ctx.beginPath();
+      ctx.moveTo(CD_W / 2, -20);
+      ctx.lineTo(CD_W / 2 + ray * 55, CD_H * 0.55);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(0, 0, 10, CD_H);
+    ctx.fillRect(CD_W - 10, 0, 10, CD_H);
+    CD_PEGS.forEach(function (p) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffc42e";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000";
+      ctx.stroke();
+    });
+    CD_BUMPERS.forEach(function (b) {
+      ctx.beginPath();
+      ctx.moveTo(b.x1, b.y1);
+      ctx.lineTo(b.x2, b.y2);
+      ctx.lineWidth = b.thickness;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = kid.colour || "#ff8c00";
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000";
+      ctx.stroke();
+    });
+    movers.forEach(function (m) {
+      ctx.fillStyle = "#ff3b3b";
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(m.x, m.y + m.h / 2);
+      ctx.lineTo(m.x + m.w * 0.2, m.y);
+      ctx.lineTo(m.x + m.w * 0.8, m.y);
+      ctx.lineTo(m.x + m.w, m.y + m.h / 2);
+      ctx.lineTo(m.x + m.w * 0.8, m.y + m.h);
+      ctx.lineTo(m.x + m.w * 0.2, m.y + m.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 11px Impact,sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(m.label, m.x + m.w / 2, m.y + m.h / 2 + 1);
+    });
+    var zonesY = CD_H - 62;
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(12, zonesY, 95, 50);
+    ctx.fillRect(253, zonesY, 95, 50);
+    ctx.fillStyle = "#0b3d91";
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 3;
+    ctx.fillRect(112, zonesY - 6, 136, 56);
+    ctx.strokeRect(112, zonesY - 6, 136, 56);
+    ctx.fillStyle = "#ffc42e";
+    ctx.font = "22px Luckiest Guy,Impact,sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("VAULT", CD_W / 2, zonesY + 28);
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.font = "bold 10px sans-serif";
+    ctx.fillText("BAM!", 59, zonesY + 28);
+    ctx.fillText("NICE!", 300, zonesY + 28);
+    particles.forEach(function (pt) {
+      ctx.globalAlpha = Math.max(0, pt.life);
+      ctx.fillStyle = pt.color;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+    var cy = bobY != null ? bobY : coin.y;
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.ellipse(coin.x + 3, cy + coin.radius + 4, coin.radius * 0.85, 5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#000";
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(coin.x, cy);
+    ctx.rotate(coin.rotation);
+    var rg = ctx.createRadialGradient(-6, -6, 2, 0, 0, coin.radius);
+    rg.addColorStop(0, "#fff3b0");
+    rg.addColorStop(0.45, "#ffc42e");
+    rg.addColorStop(1, "#c97a00");
+    ctx.beginPath();
+    ctx.arc(0, 0, coin.radius, 0, Math.PI * 2);
+    ctx.fillStyle = rg;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#8a5300";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, coin.radius * 0.62, 0, Math.PI * 2);
+    ctx.strokeStyle = "#b87300";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "#8a5300";
+    ctx.font = "bold 16px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("★", 0, 1);
+    ctx.restore();
+  };
+  var finishGame = function finishGame(zone) {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    coinRef.current.landed = true;
+    coinRef.current.active = false;
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setGameStage("landed");
+    setResultText(cdZoneLabel(zone));
+    playCoinSfx("vault", true);
+    try {
+      if (navigator.vibrate) navigator.vibrate(40);
+    } catch (e) {}
+    for (var i = 0; i < 18; i++) {
+      particlesRef.current.push({
+        x: coinRef.current.x,
+        y: coinRef.current.y,
+        vx: (Math.random() - 0.5) * 6,
+        vy: (Math.random() - 0.5) * 6 - 2,
+        r: 2 + Math.random() * 3,
+        life: 1,
+        color: Math.random() > 0.5 ? "#ffc42e" : "#fff"
+      });
+    }
+    Promise.resolve(awardReward(reward)).then(function (result) {
+      awardResultRef.current = result || null;
+      var amt = result && result.amountAwarded != null ? result.amountAwarded : reward.amount || 1;
+      setResultAmount(amt);
+      setBoostFlash(!!(result && result.boostApplied));
+      setTimeout(function () {
+        setGameStage("complete");
+        onComplete(zone, result || null);
+      }, 900);
+    }).catch(function () {
+      setResultAmount(reward.amount || 1);
+      setTimeout(function () {
+        setGameStage("complete");
+        onComplete(zone, null);
+      }, 900);
+    });
+  };
+  var reflectCircle = function reflectCircle(coin, cx, cy, rad) {
+    var dx = coin.x - cx;
+    var dy = coin.y - cy;
+    var dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+    var min = coin.radius + rad;
+    if (dist >= min) return false;
+    var nx = dx / dist;
+    var ny = dy / dist;
+    var overlap = min - dist;
+    coin.x += nx * overlap;
+    coin.y += ny * overlap;
+    var vn = coin.vx * nx + coin.vy * ny;
+    if (vn < 0) {
+      coin.vx -= (1 + CD_BOUNCE) * vn * nx;
+      coin.vy -= (1 + CD_BOUNCE) * vn * ny;
+    }
+    coin.vx += (Math.random() - 0.5) * 0.55;
+    coin.rotationSpeed += (Math.random() - 0.5) * 0.2;
+    return true;
+  };
+  var collideBumper = function collideBumper(coin, b) {
+    var dx = b.x2 - b.x1;
+    var dy = b.y2 - b.y1;
+    var len2 = dx * dx + dy * dy || 1;
+    var t = ((coin.x - b.x1) * dx + (coin.y - b.y1) * dy) / len2;
+    t = clamp(t, 0, 1);
+    var px = b.x1 + t * dx;
+    var py = b.y1 + t * dy;
+    var ox = coin.x - px;
+    var oy = coin.y - py;
+    var dist = Math.sqrt(ox * ox + oy * oy) || 0.0001;
+    var min = coin.radius + b.thickness * 0.45;
+    if (dist >= min) return false;
+    var nx = ox / dist;
+    var ny = oy / dist;
+    coin.x += nx * (min - dist);
+    coin.y += ny * (min - dist);
+    var vn = coin.vx * nx + coin.vy * ny;
+    if (vn < 0) {
+      coin.vx -= (1 + CD_BOUNCE * 0.9) * vn * nx;
+      coin.vy -= (1 + CD_BOUNCE * 0.9) * vn * ny;
+    }
+    coin.vx *= 0.92;
+    coin.vy *= 0.92;
+    coin.rotationSpeed += (Math.random() - 0.5) * 0.15;
+    return true;
+  };
+  var _tick = function tick() {
+    var canvas = canvasRef.current;
+    if (!canvas) return;
+    var ctx = canvas.getContext("2d");
+    var coin = coinRef.current;
+    var movers = moversRef.current;
+    var now = Date.now();
+    movers.forEach(function (m) {
+      m.x += m.vx;
+      if (m.x < 20 || m.x + m.w > CD_W - 20) m.vx *= -1;
+    });
+    var bobY = null;
+    if (!coin.active && !coin.landed) {
+      bobY = coin.y + Math.sin(now / 320) * 4;
+    }
+    if (coin.active && !coin.landed) {
+      var steering = pointerActiveRef.current ? pointerSteerRef.current : buttonSteerRef.current || keySteerRef.current || (tiltEnabledRef.current ? tiltRef.current : 0);
+      coin.vy += CD_GRAVITY;
+      coin.vx += steering * CD_TILT * 18;
+      coin.vx *= CD_AIR;
+      coin.vy *= CD_AIR;
+      coin.vx = clamp(coin.vx, -CD_MAX_SPEED, CD_MAX_SPEED);
+      coin.vy = clamp(coin.vy, -CD_MAX_SPEED, CD_MAX_SPEED);
+      coin.x += coin.vx;
+      coin.y += coin.vy;
+      coin.rotation += coin.rotationSpeed;
+      coin.rotationSpeed *= 0.995;
+      if (coin.x - coin.radius < 10) {
+        coin.x = 10 + coin.radius;
+        coin.vx = Math.abs(coin.vx) * CD_BOUNCE;
+      }
+      if (coin.x + coin.radius > CD_W - 10) {
+        coin.x = CD_W - 10 - coin.radius;
+        coin.vx = -Math.abs(coin.vx) * CD_BOUNCE;
+      }
+      var hitPeg = false;
+      CD_PEGS.forEach(function (p) {
+        if (reflectCircle(coin, p.x, p.y, p.r)) hitPeg = true;
+      });
+      if (hitPeg && now - pegHitCooldownRef.current > 120) {
+        pegHitCooldownRef.current = now;
+        if (Math.random() < 0.35) playCoinSfx("peg", true);
+      }
+      CD_BUMPERS.forEach(function (b) {
+        collideBumper(coin, b);
+      });
+      movers.forEach(function (m) {
+        var cx = m.x + m.w / 2;
+        var cy = m.y + m.h / 2;
+        reflectCircle(coin, cx, cy, Math.max(m.w, m.h) * 0.45);
+      });
+      if (startTimeRef.current && now - startTimeRef.current > CD_MAX_MS - 1800) {
+        var targetX = CD_W / 2;
+        coin.vx += (targetX - coin.x) * 0.01;
+        coin.vy = Math.max(coin.vy, 2.2);
+      }
+      if (coin.y + coin.radius >= CD_LANDING_Y) {
+        drawBoard(ctx, coin, movers, particlesRef.current, null);
+        finishGame(cdZoneForX(coin.x));
+        return;
+      }
+    }
+    particlesRef.current = particlesRef.current.filter(function (pt) {
+      pt.x += pt.vx;
+      pt.y += pt.vy;
+      pt.vy += 0.12;
+      pt.life -= 0.03;
+      return pt.life > 0;
+    });
+    drawBoard(ctx, coin, movers, particlesRef.current, bobY);
+    animationFrameRef.current = requestAnimationFrame(_tick);
+  };
+  var startDrop = function startDrop() {
+    if (coinRef.current.active || finishedRef.current) return;
+    var coin = coinRef.current;
+    coin.active = true;
+    coin.vy = 1.2;
+    coin.vx = (Math.random() - 0.5) * 0.8;
+    coin.rotationSpeed = (Math.random() - 0.5) * 0.15;
+    startTimeRef.current = Date.now();
+    setGameStage("dropping");
+    playCoinSfx("whoosh", true);
+    if (reducedRef.current) {
+      var start = Date.now();
+      var fromY = coin.y;
+      var fromX = coin.x;
+      var _ease = function ease() {
+        if (finishedRef.current) return;
+        var t = clamp((Date.now() - start) / 1100, 0, 1);
+        var e = t * t * (3 - 2 * t);
+        coin.x = fromX + (CD_W / 2 - fromX) * e;
+        coin.y = fromY + (CD_LANDING_Y - coin.radius - fromY) * e;
+        var canvas = canvasRef.current;
+        if (canvas) drawBoard(canvas.getContext("2d"), coin, moversRef.current, particlesRef.current, null);
+        if (t >= 1) {
+          finishGame("vault");
+          return;
+        }
+        animationFrameRef.current = requestAnimationFrame(_ease);
+      };
+      animationFrameRef.current = requestAnimationFrame(_ease);
+      return;
+    }
+    timeoutRef.current = setTimeout(function () {
+      if (finishedRef.current) return;
+      var c = coinRef.current;
+      c.x = CD_W / 2;
+      c.y = CD_LANDING_Y - c.radius;
+      finishGame("vault");
+    }, CD_MAX_MS);
+  };
+  var enableTiltAndStart = function enableTiltAndStart() {
+    if (coinRef.current.active || finishedRef.current) return;
+    var allowed = false;
+    var finish = function finish() {
+      setTiltEnabled(allowed);
+      tiltEnabledRef.current = allowed;
+      setTiltUnavailable(!allowed);
+      startDrop();
+    };
+    if (tiltAllowedSetting) {
+      try {
+        if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+          DeviceOrientationEvent.requestPermission().then(function (result) {
+            allowed = result === "granted";
+            finish();
+          }).catch(function () {
+            allowed = false;
+            finish();
+          });
+          return;
+        }
+        if (typeof DeviceOrientationEvent !== "undefined") {
+          allowed = true;
+        }
+      } catch (e) {
+        allowed = false;
+      }
+    }
+    finish();
+  };
+  useEffect(function () {
+    var onOrient = function onOrient(e) {
+      var gamma = Number(e.gamma) || 0;
+      tiltRef.current = clamp(gamma / 30, -1, 1);
+    };
+    if (tiltEnabled) {
+      window.addEventListener("deviceorientation", onOrient);
+    }
+    return function () {
+      window.removeEventListener("deviceorientation", onOrient);
+    };
+  }, [tiltEnabled]);
+  useEffect(function () {
+    var onKeyDown = function onKeyDown(e) {
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        keySteerRef.current = -1;
+      } else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+        e.preventDefault();
+        keySteerRef.current = 1;
+      }
+    };
+    var onKeyUp = function onKeyUp(e) {
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A" || e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+        keySteerRef.current = 0;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    animationFrameRef.current = requestAnimationFrame(_tick);
+    return function () {
+      cancelAnimationFrame(animationFrameRef.current);
+      clearTimeout(timeoutRef.current);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      buttonSteerRef.current = 0;
+      keySteerRef.current = 0;
+    };
+  }, []);
+  var onPointerDown = function onPointerDown(e) {
+    if (gameStage !== "dropping") return;
+    pointerActiveRef.current = true;
+    pointerStartXRef.current = e.clientX;
+    pointerSteerRef.current = 0;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {}
+  };
+  var onPointerMove = function onPointerMove(e) {
+    if (!pointerActiveRef.current) return;
+    var deltaX = e.clientX - pointerStartXRef.current;
+    pointerSteerRef.current = clamp(deltaX / 80, -1, 1);
+  };
+  var onPointerUp = function onPointerUp() {
+    pointerActiveRef.current = false;
+    pointerSteerRef.current = 0;
+  };
+  var handleClose = function handleClose() {
+    if (finishedRef.current) {
+      onClose();
+      return;
+    }
+    finishedRef.current = true;
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    Promise.resolve(awardReward(reward)).then(function (result) {
+      onComplete("vault", result || null);
+    }).catch(function () {
+      onComplete("vault", null);
+    });
+  };
+  var instruct = tiltUnavailable || !tiltAllowedSetting ? "Drag or use the arrows to guide it" : "Tilt to guide it into your vault";
+  return /*#__PURE__*/React.createElement("div", {
+    className: "modal coin-drop-modal"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-sheet kid-" + kid.id,
+    onClick: function onClick(e) {
+      e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-head"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic"
+  }, "You earned a coin!"), /*#__PURE__*/React.createElement("p", {
+    className: "coin-drop-instructions"
+  }, instruct), (tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && /*#__PURE__*/React.createElement("p", {
+    className: "coin-drop-toast"
+  }, "Tilt unavailable · Drag or use the arrows")), /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-board",
+    onPointerDown: onPointerDown,
+    onPointerMove: onPointerMove,
+    onPointerUp: onPointerUp,
+    onPointerCancel: onPointerUp
+  }, /*#__PURE__*/React.createElement("canvas", {
+    ref: canvasRef,
+    className: "coin-drop-canvas",
+    width: CD_W,
+    height: CD_H,
+    role: "img",
+    "aria-label": "Coin drop game. Guide the coin into the vault."
+  }), gameStage === "landed" || gameStage === "complete" ? /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-result"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "comic burst-label"
+  }, resultText || "SUPER DROP!"), boostFlash && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-boost"
+  }, "2× POWER-UP!"), resultAmount != null && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-amt"
+  }, "+", resultAmount, " coin", resultAmount === 1 ? "" : "s")) : null), gameStage === "ready" && /*#__PURE__*/React.createElement("button", {
+    className: "btn go coin-drop-start",
+    type: "button",
+    onClick: enableTiltAndStart
+  }, "Drop Coin"), /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-controls"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow",
+    "aria-label": "Steer coin left",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      buttonSteerRef.current = -1;
+    },
+    onPointerUp: function onPointerUp() {
+      buttonSteerRef.current = 0;
+    },
+    onPointerLeave: function onPointerLeave() {
+      buttonSteerRef.current = 0;
+    },
+    onPointerCancel: function onPointerCancel() {
+      buttonSteerRef.current = 0;
+    }
+  }, "◀ LEFT"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow",
+    "aria-label": "Steer coin right",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      buttonSteerRef.current = 1;
+    },
+    onPointerUp: function onPointerUp() {
+      buttonSteerRef.current = 0;
+    },
+    onPointerLeave: function onPointerLeave() {
+      buttonSteerRef.current = 0;
+    },
+    onPointerCancel: function onPointerCancel() {
+      buttonSteerRef.current = 0;
+    }
+  }, "RIGHT ▶")), /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    type: "button",
+    onClick: handleClose
+  }, "Close")));
+}
+
 /* ================= APP ================= */
 function App() {
   var initial = useMemo(function () {
     return loadState();
   }, []);
-  var _useState = useState(initial.kid),
-    _useState2 = _slicedToArray(_useState, 2),
-    kid = _useState2[0],
-    setKid = _useState2[1];
-  var _useState3 = useState(initial.coins),
-    _useState4 = _slicedToArray(_useState3, 2),
-    coins = _useState4[0],
-    setCoins = _useState4[1];
-  var _useState5 = useState(initial.log),
-    _useState6 = _slicedToArray(_useState5, 2),
-    log = _useState6[0],
-    setLog = _useState6[1];
-  var _useState7 = useState(initial.unlocks),
-    _useState8 = _slicedToArray(_useState7, 2),
-    unlocks = _useState8[0],
-    setUnlocks = _useState8[1];
-  var _useState9 = useState(initial.boosts),
-    _useState0 = _slicedToArray(_useState9, 2),
-    boosts = _useState0[0],
-    setBoosts = _useState0[1];
-  var _useState1 = useState(null),
-    _useState10 = _slicedToArray(_useState1, 2),
-    modal = _useState10[0],
-    setModal = _useState10[1]; // vault | timer | history | settings | profile | unlock
-  var _useState11 = useState([]),
+  var _useState11 = useState(initial.kid),
     _useState12 = _slicedToArray(_useState11, 2),
-    unlockQueue = _useState12[0],
-    setUnlockQueue = _useState12[1];
-  var _useState13 = useState(null),
+    kid = _useState12[0],
+    setKid = _useState12[1];
+  var _useState13 = useState(initial.coins),
     _useState14 = _slicedToArray(_useState13, 2),
-    timerJob = _useState14[0],
-    setTimerJob = _useState14[1];
-  var _useState15 = useState(120),
+    coins = _useState14[0],
+    setCoins = _useState14[1];
+  var _useState15 = useState(initial.log),
     _useState16 = _slicedToArray(_useState15, 2),
-    secs = _useState16[0],
-    setSecs = _useState16[1];
-  var _useState17 = useState(false),
+    log = _useState16[0],
+    setLog = _useState16[1];
+  var _useState17 = useState(initial.unlocks),
     _useState18 = _slicedToArray(_useState17, 2),
-    running = _useState18[0],
-    setRunning = _useState18[1];
-  var _useState19 = useState(false),
+    unlocks = _useState18[0],
+    setUnlocks = _useState18[1];
+  var _useState19 = useState(initial.boosts),
     _useState20 = _slicedToArray(_useState19, 2),
-    done = _useState20[0],
-    setDone = _useState20[1];
-  var _useState21 = useState(null),
+    boosts = _useState20[0],
+    setBoosts = _useState20[1];
+  var _useState21 = useState(initial.settings || defaultSettings()),
     _useState22 = _slicedToArray(_useState21, 2),
-    toast = _useState22[0],
-    setToast = _useState22[1];
-  var _useState23 = useState(supabaseReady() ? "syncing" : "local"),
+    settings = _useState22[0],
+    setSettings = _useState22[1];
+  var _useState23 = useState(initial.pendingReward || null),
     _useState24 = _slicedToArray(_useState23, 2),
-    cloud = _useState24[0],
-    setCloud = _useState24[1];
+    pendingReward = _useState24[0],
+    setPendingReward = _useState24[1];
+  var _useState25 = useState(null),
+    _useState26 = _slicedToArray(_useState25, 2),
+    modal = _useState26[0],
+    setModal = _useState26[1]; // vault | timer | history | settings | profile | unlock | coinDrop
+  var _useState27 = useState([]),
+    _useState28 = _slicedToArray(_useState27, 2),
+    unlockQueue = _useState28[0],
+    setUnlockQueue = _useState28[1];
+  var unlockQueueRef = useRef([]);
+  var _useState29 = useState(null),
+    _useState30 = _slicedToArray(_useState29, 2),
+    timerJob = _useState30[0],
+    setTimerJob = _useState30[1];
+  var _useState31 = useState(120),
+    _useState32 = _slicedToArray(_useState31, 2),
+    secs = _useState32[0],
+    setSecs = _useState32[1];
+  var _useState33 = useState(false),
+    _useState34 = _slicedToArray(_useState33, 2),
+    running = _useState34[0],
+    setRunning = _useState34[1];
+  var _useState35 = useState(false),
+    _useState36 = _slicedToArray(_useState35, 2),
+    done = _useState36[0],
+    setDone = _useState36[1];
+  var _useState37 = useState(null),
+    _useState38 = _slicedToArray(_useState37, 2),
+    toast = _useState38[0],
+    setToast = _useState38[1];
+  var _useState39 = useState(supabaseReady() ? "syncing" : "local"),
+    _useState40 = _slicedToArray(_useState39, 2),
+    cloud = _useState40[0],
+    setCloud = _useState40[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -803,13 +1604,19 @@ function App() {
   var logRef = useRef(initial.log);
   var unlocksRef = useRef(initial.unlocks);
   var boostsRef = useRef(initial.boosts);
+  var pendingRewardRef = useRef(initial.pendingReward || null);
+  var awardedRewardIdsRef = useRef({});
+  var timerCompletedRef = useRef(false);
+  var deferUnlockModalRef = useRef(false);
+  var recoveryDoneRef = useRef(false);
   var tune = useBrushingTune();
   useEffect(function () {
     coinsRef.current = coins;
     logRef.current = log;
     unlocksRef.current = unlocks;
     boostsRef.current = boosts;
-  }, [coins, log, unlocks, boosts]);
+    pendingRewardRef.current = pendingReward;
+  }, [coins, log, unlocks, boosts, pendingReward]);
   useEffect(function () {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -817,10 +1624,12 @@ function App() {
         coins: coins,
         log: log,
         unlocks: unlocks,
-        boosts: boosts
+        boosts: boosts,
+        settings: settings,
+        pendingReward: pendingReward
       }));
     } catch (e) {}
-  }, [kid, coins, log, unlocks, boosts]);
+  }, [kid, coins, log, unlocks, boosts, settings, pendingReward]);
   useEffect(function () {
     if (!supabaseReady() || hydratedRef.current) return;
     hydratedRef.current = true;
@@ -830,11 +1639,15 @@ function App() {
       return sbFetch("coin_kids?select=id,slug,balance&order=sort_order.asc", {
         headers: sbHeaders()
       });
-    }), sbFetch("coin_transactions?select=id,kid_id,entry_type,amount,description,source,created_at&order=created_at.desc", {
+    }), sbFetch("coin_transactions?select=id,kid_id,entry_type,amount,description,source,reward_id,created_at&order=created_at.desc", {
       headers: sbHeaders()
     }).catch(function () {
-      return sbFetch("coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc", {
+      return sbFetch("coin_transactions?select=id,kid_id,entry_type,amount,description,source,created_at&order=created_at.desc", {
         headers: sbHeaders()
+      }).catch(function () {
+        return sbFetch("coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc", {
+          headers: sbHeaders()
+        });
       });
     }), sbFetch("coin_unlocks?select=id,kid_id,unlock_id,unlock_type,used,unlocked_at&order=unlocked_at.asc", {
       headers: sbHeaders()
@@ -872,6 +1685,7 @@ function App() {
           amount: Number(tx.amount) || 0,
           desc: tx.description,
           source: tx.source || null,
+          rewardId: tx.reward_id || null,
           when: formatWhen(tx.created_at)
         });
       });
@@ -994,13 +1808,17 @@ function App() {
         unsynced.push({
           tempId: entry.id,
           slug: slug,
-          body: {
-            kid_id: kidId,
-            entry_type: entry.type === "spent" ? "spent" : "earned",
-            amount: entry.amount,
-            description: entry.desc || "",
-            source: entry.source || null
-          }
+          body: function () {
+            var body = {
+              kid_id: kidId,
+              entry_type: entry.type === "spent" ? "spent" : "earned",
+              amount: entry.amount,
+              description: entry.desc || "",
+              source: entry.source || null
+            };
+            if (entry.rewardId) body.reward_id = entry.rewardId;
+            return body;
+          }()
         });
       });
     });
@@ -1055,6 +1873,7 @@ function App() {
             amount: Number(tx.amount) || 0,
             desc: tx.description,
             source: tx.source || meta.body.source || null,
+            rewardId: tx.reward_id || meta.body.reward_id || null,
             when: formatWhen(tx.created_at)
           };
           tempIdMap[meta.tempId] = mapped;
@@ -1177,6 +1996,7 @@ function App() {
         description: job.desc
       };
       if (job.source) body.source = job.source;
+      if (job.rewardId) body.reward_id = job.rewardId;
       return sbFetch("coin_transactions", {
         method: "POST",
         headers: sbHeaders({
@@ -1192,13 +2012,42 @@ function App() {
               return e.id === job.tempId ? Object.assign({}, e, {
                 id: row.id,
                 when: formatWhen(row.created_at) || e.when,
-                source: row.source || e.source || null
+                source: row.source || e.source || null,
+                rewardId: row.reward_id || e.rewardId || null
               }) : e;
             });
             return next;
           });
         }
         return row;
+      }).catch(function (err) {
+        if (job.rewardId && body.reward_id) {
+          delete body.reward_id;
+          return sbFetch("coin_transactions", {
+            method: "POST",
+            headers: sbHeaders({
+              "Prefer": "return=representation"
+            }),
+            body: JSON.stringify(body)
+          }).then(function (rows) {
+            var row = rows && rows[0] ? rows[0] : null;
+            if (row && job.tempId) {
+              setLog(function (l) {
+                var next = Object.assign({}, l);
+                next[job.slug] = (l[job.slug] || []).map(function (e) {
+                  return e.id === job.tempId ? Object.assign({}, e, {
+                    id: row.id,
+                    when: formatWhen(row.created_at) || e.when,
+                    source: row.source || e.source || null
+                  }) : e;
+                });
+                return next;
+              });
+            }
+            return row;
+          });
+        }
+        throw err;
       });
     }
     if (job.kind === "delete") {
@@ -1301,7 +2150,7 @@ function App() {
       boosts: boostOverride || boostsRef.current && boostsRef.current[slug] || defaultBoost()
     });
   }
-  function syncInsertTx(slug, entryType, amount, desc, tempId, source) {
+  function syncInsertTx(slug, entryType, amount, desc, tempId, source, rewardId) {
     return enqueueSync({
       kind: "insert",
       slug: slug,
@@ -1309,16 +2158,18 @@ function App() {
       amount: amount,
       desc: desc,
       tempId: tempId,
-      source: source || null
+      source: source || null,
+      rewardId: rewardId || null
     });
   }
-  function applyUnlocks(slug, nextLog, nextCoins) {
+  function applyUnlocks(slug, nextLog, nextCoins, opts) {
+    opts = opts || {};
     var owned = {};
     (unlocksRef.current[slug] || []).forEach(function (u) {
       owned[u.id] = true;
     });
     var fresh = findNewUnlocks(slug, nextLog, nextCoins, owned);
-    if (!fresh.length) return;
+    if (!fresh.length) return [];
     var nextUnlocks = Object.assign({}, unlocksRef.current);
     nextUnlocks[slug] = (nextUnlocks[slug] || []).concat(fresh);
     unlocksRef.current = nextUnlocks;
@@ -1333,17 +2184,22 @@ function App() {
         at: u.at
       });
     });
-    setUnlockQueue(function (q) {
-      return q.concat(fresh.map(function (u) {
-        return Object.assign({}, u, {
-          slug: slug
-        });
-      }));
+    var queued = fresh.map(function (u) {
+      return Object.assign({}, u, {
+        slug: slug
+      });
     });
-    try {
-      tune.fanfare();
-    } catch (e) {}
-    setModal("unlock");
+    unlockQueueRef.current = (unlockQueueRef.current || []).concat(queued);
+    setUnlockQueue(function (q) {
+      return q.concat(queued);
+    });
+    if (!opts.deferCelebration && !deferUnlockModalRef.current) {
+      try {
+        tune.fanfare();
+      } catch (e) {}
+      setModal("unlock");
+    }
+    return fresh;
   }
   var weekend = useMemo(function () {
     var d = new Date().getDay();
@@ -1361,18 +2217,42 @@ function App() {
   var dismissUnlock = function dismissUnlock() {
     setUnlockQueue(function (q) {
       var rest = q.slice(1);
+      unlockQueueRef.current = rest;
       if (!rest.length) setModal(null);
       return rest;
     });
   };
   var earn = function earn(amount, desc, source, opts) {
     opts = opts || {};
-    var slug = opts.slug || kid;
+    var slug = opts.slug || opts.kidId || kid;
     var skipUnlockCheck = !!opts.skipUnlockCheck;
+    var deferCelebration = !!opts.deferCelebration || deferUnlockModalRef.current;
     var award = amount;
     var doubled = false;
     var nextBoosts = Object.assign({}, boostsRef.current);
     var kidBoost = Object.assign({}, nextBoosts[slug] || defaultBoost());
+    if (opts.rewardId) {
+      if (awardedRewardIdsRef.current[opts.rewardId]) {
+        return {
+          amountAwarded: 0,
+          boostApplied: false,
+          duplicate: true,
+          transaction: null
+        };
+      }
+      var already = (logRef.current[slug] || []).some(function (tx) {
+        return tx && tx.rewardId && tx.rewardId === opts.rewardId;
+      });
+      if (already) {
+        awardedRewardIdsRef.current[opts.rewardId] = true;
+        return {
+          amountAwarded: 0,
+          boostApplied: false,
+          duplicate: true,
+          transaction: null
+        };
+      }
+    }
     if (!opts.skipDouble && kidBoost.doubleEarnsLeft > 0) {
       award = amount * 2;
       kidBoost.doubleEarnsLeft -= 1;
@@ -1383,14 +2263,18 @@ function App() {
     }
     var when = new Date().toLocaleString("en-GB");
     var tempId = "local-" + Date.now() + "-" + Math.floor(Math.random() * 999);
+    var finalDesc = desc;
+    if (doubled) finalDesc = desc + " · 2× power-up";
     var entry = {
       id: tempId,
       type: "earned",
       amount: award,
-      desc: desc,
+      desc: finalDesc,
       when: when,
-      source: source || null
+      source: source || null,
+      rewardId: opts.rewardId || null
     };
+    if (opts.rewardId) awardedRewardIdsRef.current[opts.rewardId] = true;
     var newBal = 0;
     var nextCoins = Object.assign({}, coinsRef.current);
     newBal = (nextCoins[slug] || 0) + award;
@@ -1401,13 +2285,23 @@ function App() {
     nextLog[slug] = [entry].concat(nextLog[slug] || []);
     logRef.current = nextLog;
     setLog(nextLog);
-    if (doubled) flash("2× power-up! +" + award + " for " + KIDS[slug].name + "!");else flash("+" + award + " for " + KIDS[slug].name + "!");
-    Promise.all([syncInsertTx(slug, "earned", award, desc, tempId, source), syncBalance(slug, newBal, kidBoost)]).then(function () {
+    if (!opts.quiet) {
+      if (doubled) flash("2× power-up! +" + award + " for " + KIDS[slug].name + "!");else flash("+" + award + " for " + KIDS[slug].name + "!");
+    }
+    Promise.all([syncInsertTx(slug, "earned", award, finalDesc, tempId, source, opts.rewardId || null), syncBalance(slug, newBal, kidBoost)]).then(function () {
       setCloud("online");
     }).catch(function () {
       setCloud("offline");
     });
-    if (!skipUnlockCheck) applyUnlocks(slug, nextLog, nextCoins);
+    if (!skipUnlockCheck) applyUnlocks(slug, nextLog, nextCoins, {
+      deferCelebration: deferCelebration
+    });
+    return {
+      amountAwarded: award,
+      boostApplied: doubled,
+      duplicate: false,
+      transaction: entry
+    };
   };
   var spend = function spend(amount, desc, source, opts) {
     opts = opts || {};
@@ -1567,6 +2461,11 @@ function App() {
     setUnlocks(clearedUnlocks);
     setBoosts(clearedBoosts);
     setUnlockQueue([]);
+    unlockQueueRef.current = [];
+    pendingRewardRef.current = null;
+    setPendingReward(null);
+    awardedRewardIdsRef.current = {};
+    timerCompletedRef.current = false;
     flash("All kids reset to 0");
     setModal(null);
     if (!supabaseReady()) return;
@@ -1595,9 +2494,86 @@ function App() {
       setCloud("offline");
     });
   };
+  var clearPendingReward = function clearPendingReward() {
+    pendingRewardRef.current = null;
+    setPendingReward(null);
+  };
+  var completePendingReward = function completePendingReward(reward) {
+    try {
+      if (!reward || reward.awarded) return Promise.resolve(null);
+      var slug = reward.kidId;
+      if (reward.rewardId && awardedRewardIdsRef.current[reward.rewardId]) {
+        clearPendingReward();
+        return Promise.resolve({
+          amountAwarded: 0,
+          boostApplied: false,
+          duplicate: true
+        });
+      }
+      var alreadyExists = (logRef.current[slug] || []).some(function (tx) {
+        return tx && reward.rewardId && tx.rewardId === reward.rewardId;
+      });
+      if (alreadyExists) {
+        clearPendingReward();
+        return Promise.resolve({
+          amountAwarded: 0,
+          boostApplied: false,
+          duplicate: true
+        });
+      }
+      deferUnlockModalRef.current = true;
+      var result = earn(reward.amount, reward.description, reward.source, {
+        kidId: slug,
+        rewardId: reward.rewardId,
+        deferCelebration: true,
+        quiet: modal === "coinDrop"
+      });
+      clearPendingReward();
+      return Promise.resolve(result);
+    } catch (err) {
+      try {
+        deferUnlockModalRef.current = true;
+        var fallback = earn(reward && reward.amount || 1, reward && reward.description || "Brush teeth", reward && reward.source || "brush-am", {
+          kidId: reward && reward.kidId || kid,
+          rewardId: reward && reward.rewardId,
+          deferCelebration: true
+        });
+        clearPendingReward();
+        return Promise.resolve(fallback);
+      } catch (e2) {
+        clearPendingReward();
+        return Promise.resolve(null);
+      }
+    }
+  };
+  var finishCoinDropFlow = function finishCoinDropFlow() {
+    deferUnlockModalRef.current = false;
+    setPendingReward(null);
+    pendingRewardRef.current = null;
+    setTimerJob(null);
+    setDone(false);
+    setRunning(false);
+    if (unlockQueueRef.current && unlockQueueRef.current.length) {
+      try {
+        tune.fanfare();
+      } catch (e) {}
+      setModal("unlock");
+    } else {
+      setModal(null);
+    }
+  };
+  var handleCoinDropComplete = function handleCoinDropComplete() {
+    finishCoinDropFlow();
+  };
+  var handleCloseCoinDrop = function handleCloseCoinDrop() {
+    completePendingReward(pendingRewardRef.current || pendingReward).then(function () {
+      finishCoinDropFlow();
+    });
+  };
 
   /* timer */
   var openTimer = function openTimer(job) {
+    timerCompletedRef.current = false;
     setTimerJob(job);
     setSecs(120);
     setRunning(false);
@@ -1609,27 +2585,77 @@ function App() {
     setRunning(false);
     setModal(null);
     setTimerJob(null);
+    timerCompletedRef.current = false;
   };
   useEffect(function () {
     if (!running) return;
     if (secs <= 0) {
+      if (timerCompletedRef.current) return;
+      timerCompletedRef.current = true;
       setRunning(false);
       tune.stop();
+      var job = timerJob;
+      var desc = job ? job.name + (job.sub ? " (" + job.sub + ")" : "") : "Brush teeth";
+      var source = job ? job.id : "brush-am";
+      var amount = job ? job.coins : 1;
+      var reward = {
+        rewardId: makeRewardId(),
+        kidId: kid,
+        amount: amount,
+        description: desc,
+        source: source,
+        createdAt: new Date().toISOString(),
+        awarded: false
+      };
+      if (settings.coinDropEnabled !== false) {
+        pendingRewardRef.current = reward;
+        setPendingReward(reward);
+        deferUnlockModalRef.current = true;
+        setModal("coinDrop");
+        return;
+      }
       tune.fanfare();
       setDone(true);
-      var job = timerJob;
-      earn(job ? job.coins : 1, job ? job.name + (job.sub ? " (" + job.sub + ")" : "") : "Brush teeth", job ? job.id : "brush-am");
+      earn(amount, desc, source, {
+        kidId: kid,
+        rewardId: reward.rewardId
+      });
       return;
     }
     var t = setTimeout(function () {
-      return setSecs(function (s) {
+      setSecs(function (s) {
         return s - 1;
       });
     }, 1000);
     return function () {
-      return clearTimeout(t);
+      clearTimeout(t);
     };
   }, [running, secs]);
+
+  /* Recover unresolved pending brushing rewards on boot */
+  useEffect(function () {
+    if (recoveryDoneRef.current) return;
+    recoveryDoneRef.current = true;
+    var pending = pendingRewardRef.current || pendingReward;
+    if (!pending || pending.awarded) return;
+    var exists = (logRef.current[pending.kidId] || []).some(function (tx) {
+      return tx && tx.rewardId && tx.rewardId === pending.rewardId;
+    });
+    if (exists) {
+      clearPendingReward();
+      return;
+    }
+    // Prefer automatic recovery if unclear whether the game was already played
+    completePendingReward(pending).then(function () {
+      deferUnlockModalRef.current = false;
+      if (unlockQueueRef.current && unlockQueueRef.current.length) {
+        try {
+          tune.fanfare();
+        } catch (e) {}
+        setModal("unlock");
+      }
+    });
+  }, []);
 
   /* coin spill canvas — gravity follows phone tilt when available */
   useEffect(function () {
@@ -2152,7 +3178,7 @@ function App() {
       fontWeight: 900,
       marginTop: "6px"
     }
-  }, "You earned 1 coin ⭐"), /*#__PURE__*/React.createElement("button", {
+  }, "You earned your brushing coin ⭐"), /*#__PURE__*/React.createElement("button", {
     className: "btn go",
     onClick: closeTimer
   }, "Brilliant!")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("svg", {
@@ -2197,7 +3223,16 @@ function App() {
   }, "⏸ Pause"), /*#__PURE__*/React.createElement("button", {
     className: "btn close",
     onClick: closeTimer
-  }, "Cancel"))))), modal === "history" && /*#__PURE__*/React.createElement("div", {
+  }, "Cancel"))))), modal === "coinDrop" && pendingReward && /*#__PURE__*/React.createElement(CoinDropGame, {
+    kid: Object.assign({}, KIDS[pendingReward.kidId] || K, {
+      id: pendingReward.kidId || kid
+    }),
+    reward: pendingReward,
+    tiltControlsEnabled: settings.tiltControlsEnabled !== false,
+    awardReward: completePendingReward,
+    onComplete: handleCoinDropComplete,
+    onClose: handleCoinDropComplete
+  }), modal === "history" && /*#__PURE__*/React.createElement("div", {
     className: "modal",
     onClick: function onClick() {
       return setModal(null);
@@ -2414,7 +3449,31 @@ function App() {
     }
   }, "Sync: ", cloud === "online" ? "☁ Shared (Supabase)" : cloud === "syncing" ? "☁ Connecting…" : cloud === "offline" ? "⚠ Offline — this device only" : "📱 This device only"), /*#__PURE__*/React.createElement("div", {
     className: "settings-note"
-  }, "Unlocks: ", (unlocks[kid] || []).length, " · Boosts: 2×", kidBoost.doubleEarnsLeft, kidBoost.freeSwitch ? " · Free Switch" : ""), /*#__PURE__*/React.createElement("button", {
+  }, "Unlocks: ", (unlocks[kid] || []).length, " · Boosts: 2×", kidBoost.doubleEarnsLeft, kidBoost.freeSwitch ? " · Free Switch" : ""), /*#__PURE__*/React.createElement("label", {
+    className: "settings-toggle"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: settings.coinDropEnabled !== false,
+    onChange: function onChange(e) {
+      setSettings(function (s) {
+        return Object.assign({}, s, {
+          coinDropEnabled: e.target.checked
+        });
+      });
+    }
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Brushing Coin Drop Game"), /*#__PURE__*/React.createElement("em", null, "Play a short tilt game after brushing."))), /*#__PURE__*/React.createElement("label", {
+    className: "settings-toggle"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: settings.tiltControlsEnabled !== false,
+    onChange: function onChange(e) {
+      setSettings(function (s) {
+        return Object.assign({}, s, {
+          tiltControlsEnabled: e.target.checked
+        });
+      });
+    }
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Tilt controls"), /*#__PURE__*/React.createElement("em", null, "Use device tilt in Coin Drop when available."))), /*#__PURE__*/React.createElement("button", {
     className: "btn undo",
     onClick: undoLast,
     disabled: !log[kid].length

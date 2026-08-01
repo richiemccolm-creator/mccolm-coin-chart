@@ -29,11 +29,19 @@ create table if not exists coin_transactions (
   amount       int not null check (amount >= 0),
   description  text not null,
   source       text,
+  reward_id    text,
   created_at   timestamptz not null default now()
 );
 
 alter table coin_transactions
   add column if not exists source text;
+
+alter table coin_transactions
+  add column if not exists reward_id text;
+
+create unique index if not exists coin_transactions_reward_id_unique
+  on coin_transactions(reward_id)
+  where reward_id is not null;
 
 do $$
 begin
