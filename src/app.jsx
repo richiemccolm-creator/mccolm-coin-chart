@@ -126,6 +126,75 @@ const SAVINGS_SHOP = [
   {id:"cinema",    name:"Cinema trip",      sub:"all three boys", coins:250}
 ];
 
+/* Secret milestone trophies (titles only revealed on unlock / profile) */
+const TROPHIES = [
+  {id:"kind-5",     name:"Kind Heart",      icon:"💛", check:function(s){ return s.count.kind >= 5; }},
+  {id:"kind-15",    name:"Super Helper",    icon:"🌟", check:function(s){ return s.count.kind >= 15; }},
+  {id:"brush-10",   name:"Brush Boss",      icon:"🪥", check:function(s){ return s.brushTotal >= 10; }},
+  {id:"bed-7",      name:"Bed Maker",       icon:"🛏️", check:function(s){ return s.count.bed >= 7; }},
+  {id:"homework-5", name:"Homework Champ",  icon:"📚", check:function(s){ return s.count.homework >= 5; }},
+  {id:"tidy-5",     name:"Tidy Titan",      icon:"🧹", check:function(s){ return s.count.tidy >= 5; }},
+  {id:"cook-5",     name:"Kitchen Hero",    icon:"👨‍🍳", check:function(s){ return s.count.cook >= 5; }},
+  {id:"club-3",     name:"Club Kid",        icon:"⚽", check:function(s){ return s.count.club >= 3; }},
+  {id:"earned-50",  name:"Coin Collector",  icon:"🏆", check:function(s){ return s.earned >= 50; }},
+  {id:"balance-50", name:"Big Saver",       icon:"🏦", check:function(s){ return s.balance >= 50; }},
+  {id:"first-spend",name:"First Treat",     icon:"🎁", check:function(s){ return s.spentCount >= 1; }}
+];
+
+/* Usable power-ups — unlocked secretly, activated from the profile */
+const POWERUPS = [
+  {id:"double-3",    name:"Double Coin Burst", icon:"⚡", effect:"double",
+    blurb:"Next 3 earns give double coins!",
+    check:function(s){ return s.earned >= 20; }},
+  {id:"free-switch", name:"Free Switch Pass",  icon:"🎮", effect:"freeSwitch",
+    blurb:"One free Nintendo Switch (15 min)!",
+    check:function(s){ return s.switchSpends >= 5 || s.earned >= 30; }},
+  {id:"coin-boost",  name:"Coin Drop",         icon:"🪙", effect:"coinDrop",
+    blurb:"Tap Use for an instant +5 coins!",
+    check:function(s){ return s.count.kind >= 10; }}
+];
+
+const ALL_REWARDS = TROPHIES.map(function(t){
+  return Object.assign({}, t, {type:"trophy"});
+}).concat(POWERUPS.map(function(p){
+  return Object.assign({}, p, {type:"powerup"});
+}));
+
+const REWARD_BY_ID = {};
+ALL_REWARDS.forEach(function(r){ REWARD_BY_ID[r.id] = r; });
+
+/* Infer source from older log descriptions that lack a source field */
+const DESC_SOURCE = {
+  "Brush teeth (Morning)":"brush-am",
+  "Brush teeth (Night)":"brush-pm",
+  "Make your bed":"bed",
+  "Get dressed on time":"dressed",
+  "Homework, no fuss":"homework",
+  "Sit nicely at the table":"sit",
+  "Eat your dinner":"dinner",
+  "Tidy your room":"tidy",
+  "Help cook or set the table":"cook",
+  "Go to a club or activity":"club",
+  "Be kind & helpful":"kind",
+  "Breakfast TV":"tv",
+  "Screen Time":"screentime",
+  "Choose a special snack":"snack",
+  "Friday Movie Night":"movie",
+  "Nintendo Switch":"switch15",
+  "Mum's Food Tax":"tax",
+  "Small toy":"toy-small",
+  "Park trip + snack":"park",
+  "Stay up later":"late",
+  "Day out":"dayout",
+  "Bigger toy":"toy-big",
+  "Cinema trip":"cinema"
+};
+
+const JOB_SOURCES = {
+  "brush-am":1,"brush-pm":1,"bed":1,"dressed":1,"homework":1,"sit":1,"dinner":1,
+  "tidy":1,"cook":1,"club":1,"kind":1
+};
+
 /* ---------- image placeholder component ---------- */
 function Slot({src,label,className,style,light,icon}){
   return (
@@ -201,12 +270,50 @@ const DEFAULT_COINS = {sam:0,isaac:0,ben:0};
 const DEFAULT_LOG = {sam:[],isaac:[],ben:[]};
 
 function emptyLog(){ return {sam:[],isaac:[],ben:[]}; }
+function emptyUnlocks(){ return {sam:[],isaac:[],ben:[]}; }
+function defaultBoost(){ return {doubleEarnsLeft:0, freeSwitch:false}; }
+function emptyBoosts(){
+  return {
+    sam: defaultBoost(),
+    isaac: defaultBoost(),
+    ben: defaultBoost()
+  };
+}
+
+function normalizeUnlockList(list){
+  if(!Array.isArray(list)) return [];
+  return list.filter(function(u){ return u && u.id; }).map(function(u){
+    return {
+      id: u.id,
+      type: u.type === "powerup" ? "powerup" : "trophy",
+      used: !!u.used,
+      at: u.at || u.unlocked_at || new Date().toISOString(),
+      remoteId: u.remoteId || null
+    };
+  });
+}
 
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return {kid:"sam", coins:Object.assign({}, DEFAULT_COINS), log:emptyLog()};
+    if(!raw){
+      return {
+        kid:"sam",
+        coins:Object.assign({}, DEFAULT_COINS),
+        log:emptyLog(),
+        unlocks:emptyUnlocks(),
+        boosts:emptyBoosts()
+      };
+    }
     const parsed = JSON.parse(raw);
+    const boosts = emptyBoosts();
+    Object.keys(KIDS).forEach(function(slug){
+      const b = (parsed.boosts && parsed.boosts[slug]) || {};
+      boosts[slug] = {
+        doubleEarnsLeft: Math.max(0, Number(b.doubleEarnsLeft) || 0),
+        freeSwitch: !!b.freeSwitch
+      };
+    });
     return {
       kid: parsed.kid && KIDS[parsed.kid] ? parsed.kid : "sam",
       coins: Object.assign({}, DEFAULT_COINS, parsed.coins||{}),
@@ -214,10 +321,22 @@ function loadState(){
         sam: Array.isArray(parsed.log && parsed.log.sam) ? parsed.log.sam : [],
         isaac: Array.isArray(parsed.log && parsed.log.isaac) ? parsed.log.isaac : [],
         ben: Array.isArray(parsed.log && parsed.log.ben) ? parsed.log.ben : []
-      }
+      },
+      unlocks: {
+        sam: normalizeUnlockList(parsed.unlocks && parsed.unlocks.sam),
+        isaac: normalizeUnlockList(parsed.unlocks && parsed.unlocks.isaac),
+        ben: normalizeUnlockList(parsed.unlocks && parsed.unlocks.ben)
+      },
+      boosts: boosts
     };
   }catch(e){
-    return {kid:"sam", coins:Object.assign({}, DEFAULT_COINS), log:emptyLog()};
+    return {
+      kid:"sam",
+      coins:Object.assign({}, DEFAULT_COINS),
+      log:emptyLog(),
+      unlocks:emptyUnlocks(),
+      boosts:emptyBoosts()
+    };
   }
 }
 
@@ -282,13 +401,88 @@ function localIsAhead(localCoins, localLog, remoteCoins, remoteLog){
     || (logCount(localLog) > logCount(remoteLog) && totalCoins(localCoins) >= totalCoins(remoteCoins));
 }
 
+function entrySource(e){
+  if(e && e.source) return e.source;
+  if(e && e.desc && DESC_SOURCE[e.desc]) return DESC_SOURCE[e.desc];
+  if(e && e.desc && e.desc.indexOf("Nintendo Switch") === 0){
+    if(e.desc.indexOf("30") >= 0) return "switch30";
+    return "switch15";
+  }
+  return null;
+}
+
+function kidStats(slug, log, coins){
+  const entries = (log && log[slug]) || [];
+  const count = {};
+  let earned = 0;
+  let spent = 0;
+  let spentCount = 0;
+  let jobsDone = 0;
+  let brushTotal = 0;
+  let switchSpends = 0;
+
+  entries.forEach(function(e){
+    const src = entrySource(e);
+    if(e.type === "earned"){
+      earned += Number(e.amount) || 0;
+      if(src && JOB_SOURCES[src]){
+        jobsDone += 1;
+        count[src] = (count[src] || 0) + 1;
+        if(src === "brush-am" || src === "brush-pm") brushTotal += 1;
+      }else if(src){
+        count[src] = (count[src] || 0) + 1;
+      }
+    }else if(e.type === "spent"){
+      spent += Number(e.amount) || 0;
+      spentCount += 1;
+      if(src){
+        count[src] = (count[src] || 0) + 1;
+        if(src === "switch15" || src === "switch30") switchSpends += 1;
+      }
+    }
+  });
+
+  return {
+    count: count,
+    earned: earned,
+    spent: spent,
+    spentCount: spentCount,
+    jobsDone: jobsDone,
+    brushTotal: brushTotal,
+    switchSpends: switchSpends,
+    balance: (coins && coins[slug]) || 0
+  };
+}
+
+function findNewUnlocks(slug, log, coins, ownedIds){
+  const stats = kidStats(slug, log, coins);
+  const fresh = [];
+  ALL_REWARDS.forEach(function(reward){
+    if(ownedIds[reward.id]) return;
+    try{
+      if(reward.check(stats)){
+        fresh.push({
+          id: reward.id,
+          type: reward.type,
+          used: false,
+          at: new Date().toISOString()
+        });
+      }
+    }catch(err){}
+  });
+  return fresh;
+}
+
 /* ================= APP ================= */
 function App(){
   const initial = useMemo(function(){ return loadState(); },[]);
   const [kid,setKid] = useState(initial.kid);
   const [coins,setCoins] = useState(initial.coins);
   const [log,setLog] = useState(initial.log);
-  const [modal,setModal] = useState(null);          // 'vault' | 'timer' | 'history' | 'settings'
+  const [unlocks,setUnlocks] = useState(initial.unlocks);
+  const [boosts,setBoosts] = useState(initial.boosts);
+  const [modal,setModal] = useState(null); // vault | timer | history | settings | profile | unlock
+  const [unlockQueue,setUnlockQueue] = useState([]);
   const [timerJob,setTimerJob] = useState(null);
   const [secs,setSecs] = useState(120);
   const [running,setRunning] = useState(false);
@@ -302,42 +496,67 @@ function App(){
   const pendingSyncRef = useRef([]);
   const coinsRef = useRef(initial.coins);
   const logRef = useRef(initial.log);
+  const unlocksRef = useRef(initial.unlocks);
+  const boostsRef = useRef(initial.boosts);
   const tune = useBrushingTune();
 
   useEffect(function(){
     coinsRef.current = coins;
     logRef.current = log;
-  },[coins,log]);
+    unlocksRef.current = unlocks;
+    boostsRef.current = boosts;
+  },[coins,log,unlocks,boosts]);
 
   useEffect(function(){
     try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({kid:kid, coins:coins, log:log}));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        kid:kid, coins:coins, log:log, unlocks:unlocks, boosts:boosts
+      }));
     }catch(e){}
-  },[kid,coins,log]);
+  },[kid,coins,log,unlocks,boosts]);
 
   useEffect(function(){
     if(!supabaseReady() || hydratedRef.current) return;
     hydratedRef.current = true;
 
     Promise.all([
-      sbFetch("coin_kids?select=id,slug,balance&order=sort_order.asc", {headers: sbHeaders()}),
       sbFetch(
-        "coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc",
+        "coin_kids?select=id,slug,balance,double_earns_left,free_switch&order=sort_order.asc",
         {headers: sbHeaders()}
-      )
+      ).catch(function(){
+        return sbFetch("coin_kids?select=id,slug,balance&order=sort_order.asc", {headers: sbHeaders()});
+      }),
+      sbFetch(
+        "coin_transactions?select=id,kid_id,entry_type,amount,description,source,created_at&order=created_at.desc",
+        {headers: sbHeaders()}
+      ).catch(function(){
+        return sbFetch(
+          "coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc",
+          {headers: sbHeaders()}
+        );
+      }),
+      sbFetch(
+        "coin_unlocks?select=id,kid_id,unlock_id,unlock_type,used,unlocked_at&order=unlocked_at.asc",
+        {headers: sbHeaders()}
+      ).catch(function(){ return []; })
     ]).then(function(results){
       const kids = results[0] || [];
       const txs = results[1] || [];
+      const remoteUnlockRows = results[2] || [];
       const ids = {};
       const remoteCoins = Object.assign({}, DEFAULT_COINS);
+      const remoteBoosts = emptyBoosts();
       kids.forEach(function(row){
         if(KIDS[row.slug]){
           ids[row.slug] = row.id;
           remoteCoins[row.slug] = Number(row.balance) || 0;
+          remoteBoosts[row.slug] = {
+            doubleEarnsLeft: Math.max(0, Number(row.double_earns_left) || 0),
+            freeSwitch: !!row.free_switch
+          };
         }
       });
       kidIdsRef.current = ids;
-      // Keep syncReadyRef false until hydrate finishes so earns during fetch stay queued.
 
       const idToSlug = {};
       Object.keys(ids).forEach(function(slug){ idToSlug[ids[slug]] = slug; });
@@ -351,27 +570,42 @@ function App(){
           type: tx.entry_type,
           amount: Number(tx.amount) || 0,
           desc: tx.description,
+          source: tx.source || null,
           when: formatWhen(tx.created_at)
         });
       });
 
-      // Use live local state (may have changed while the fetch was in flight).
+      const remoteUnlocks = emptyUnlocks();
+      remoteUnlockRows.forEach(function(row){
+        const slug = idToSlug[row.kid_id];
+        if(!slug) return;
+        remoteUnlocks[slug].push({
+          id: row.unlock_id,
+          type: row.unlock_type === "powerup" ? "powerup" : "trophy",
+          used: !!row.used,
+          at: row.unlocked_at || new Date().toISOString(),
+          remoteId: row.id
+        });
+      });
+
       const liveCoins = Object.assign({}, DEFAULT_COINS, coinsRef.current || {});
       const liveLog = {
         sam: (logRef.current && logRef.current.sam) || [],
         isaac: (logRef.current && logRef.current.isaac) || [],
         ben: (logRef.current && logRef.current.ben) || []
       };
+      const liveUnlocks = unlocksRef.current || emptyUnlocks();
+      const liveBoosts = boostsRef.current || emptyBoosts();
       const remoteEmpty = totalCoins(remoteCoins) === 0 && logCount(remoteLog) === 0;
       const localHasData = totalCoins(liveCoins) > 0 || logCount(liveLog) > 0;
       const preferLocal = (remoteEmpty && localHasData) || localIsAhead(liveCoins, liveLog, remoteCoins, remoteLog);
 
       if(preferLocal && Object.keys(ids).length){
-        return pushLocalToCloud(liveCoins, liveLog, ids, remoteLog).then(function(result){
+        return pushLocalToCloud(liveCoins, liveLog, ids, remoteLog, liveUnlocks, liveBoosts).then(function(result){
           const mappedLog = result && result.log ? result.log : (result || liveLog);
           const tempIdMap = (result && result.tempIdMap) || {};
+          const mappedUnlocks = (result && result.unlocks) || liveUnlocks;
 
-          // Keep whatever the user has now (including earns during the upload).
           const latestCoins = Object.assign({}, DEFAULT_COINS, coinsRef.current || liveCoins);
           setLog(function(current){
             const out = emptyLog();
@@ -381,22 +615,29 @@ function App(){
                 return mapped ? Object.assign({}, e, mapped) : e;
               });
             });
-            // If current was somehow empty, fall back to mapped log.
             if(logCount(out) === 0 && logCount(mappedLog) > 0) return mappedLog;
             logRef.current = out;
             return out;
           });
           coinsRef.current = latestCoins;
           setCoins(latestCoins);
+          unlocksRef.current = mappedUnlocks;
+          setUnlocks(mappedUnlocks);
+          boostsRef.current = liveBoosts;
+          setBoosts(liveBoosts);
 
-          // Drop insert jobs already uploaded; keep anything newer for flush.
           pendingSyncRef.current = pendingSyncRef.current.filter(function(job){
             return !(job.kind === "insert" && tempIdMap[job.tempId]);
           });
           syncReadyRef.current = true;
 
           const balTasks = Object.keys(KIDS).map(function(slug){
-            return runSyncJob({kind:"balance", slug:slug, balance: latestCoins[slug] || 0});
+            return runSyncJob({
+              kind:"balance",
+              slug:slug,
+              balance: latestCoins[slug] || 0,
+              boosts: liveBoosts[slug]
+            });
           });
           return Promise.all(balTasks)
             .then(function(){ return flushPendingSync(); })
@@ -407,8 +648,12 @@ function App(){
       pendingSyncRef.current = [];
       coinsRef.current = remoteCoins;
       logRef.current = remoteLog;
+      unlocksRef.current = remoteUnlocks;
+      boostsRef.current = remoteBoosts;
       setCoins(remoteCoins);
       setLog(remoteLog);
+      setUnlocks(remoteUnlocks);
+      setBoosts(remoteBoosts);
       syncReadyRef.current = true;
       setCloud("online");
     }).catch(function(){
@@ -416,16 +661,28 @@ function App(){
     });
   },[]);
 
-  function pushLocalToCloud(localCoins, localLog, ids, remoteLog){
+  function pushLocalToCloud(localCoins, localLog, ids, remoteLog, localUnlocks, localBoosts){
     const patches = Object.keys(KIDS).map(function(slug){
       if(!ids[slug]) return Promise.resolve();
+      const b = (localBoosts && localBoosts[slug]) || defaultBoost();
       return sbFetch("coin_kids?slug=eq."+encodeURIComponent(slug), {
         method: "PATCH",
         headers: sbHeaders({"Prefer":"return=minimal"}),
         body: JSON.stringify({
           balance: localCoins[slug] || 0,
+          double_earns_left: b.doubleEarnsLeft || 0,
+          free_switch: !!b.freeSwitch,
           updated_at: new Date().toISOString()
         })
+      }).catch(function(){
+        return sbFetch("coin_kids?slug=eq."+encodeURIComponent(slug), {
+          method: "PATCH",
+          headers: sbHeaders({"Prefer":"return=minimal"}),
+          body: JSON.stringify({
+            balance: localCoins[slug] || 0,
+            updated_at: new Date().toISOString()
+          })
+        });
       });
     });
 
@@ -443,7 +700,8 @@ function App(){
             kid_id: kidId,
             entry_type: entry.type === "spent" ? "spent" : "earned",
             amount: entry.amount,
-            description: entry.desc || ""
+            description: entry.desc || "",
+            source: entry.source || null
           }
         });
       });
@@ -477,61 +735,127 @@ function App(){
       });
 
       const tempIdMap = {};
-      if(!unsynced.length) return {log: merged, tempIdMap: tempIdMap};
-
-      return sbFetch("coin_transactions", {
-        method: "POST",
-        headers: sbHeaders({"Prefer":"return=representation"}),
-        body: JSON.stringify(unsynced.map(function(i){ return i.body; }))
-      }).then(function(rows){
-        const list = rows || [];
-        for(var i = 0; i < list.length; i++){
-          const tx = list[i];
-          const meta = unsynced[i];
-          if(!meta) continue;
-          const mapped = {
-            id: tx.id,
-            type: tx.entry_type,
-            amount: Number(tx.amount) || 0,
-            desc: tx.description,
-            when: formatWhen(tx.created_at)
-          };
-          tempIdMap[meta.tempId] = mapped;
-          const slug = meta.slug;
-          merged[slug] = (merged[slug] || []).map(function(e){
-            if(e.id !== meta.tempId) return e;
-            return Object.assign({}, e, mapped, {when: mapped.when || e.when});
+      const txPromise = !unsynced.length
+        ? Promise.resolve({log: merged, tempIdMap: tempIdMap})
+        : sbFetch("coin_transactions", {
+            method: "POST",
+            headers: sbHeaders({"Prefer":"return=representation"}),
+            body: JSON.stringify(unsynced.map(function(i){ return i.body; }))
+          }).then(function(rows){
+            const list = rows || [];
+            for(var i = 0; i < list.length; i++){
+              const tx = list[i];
+              const meta = unsynced[i];
+              if(!meta) continue;
+              const mapped = {
+                id: tx.id,
+                type: tx.entry_type,
+                amount: Number(tx.amount) || 0,
+                desc: tx.description,
+                source: tx.source || meta.body.source || null,
+                when: formatWhen(tx.created_at)
+              };
+              tempIdMap[meta.tempId] = mapped;
+              const slug = meta.slug;
+              merged[slug] = (merged[slug] || []).map(function(e){
+                if(e.id !== meta.tempId) return e;
+                return Object.assign({}, e, mapped, {when: mapped.when || e.when});
+              });
+            }
+            return {log: merged, tempIdMap: tempIdMap};
           });
+
+      return txPromise.then(function(txResult){
+        const unlockBodies = [];
+        Object.keys(KIDS).forEach(function(slug){
+          const kidId = ids[slug];
+          if(!kidId) return;
+          (localUnlocks[slug] || []).forEach(function(u){
+            if(u.remoteId) return;
+            unlockBodies.push({
+              slug: slug,
+              unlock_id: u.id,
+              body: {
+                kid_id: kidId,
+                unlock_id: u.id,
+                unlock_type: u.type === "powerup" ? "powerup" : "trophy",
+                used: !!u.used,
+                unlocked_at: u.at || new Date().toISOString()
+              }
+            });
+          });
+        });
+
+        const nextUnlocks = {
+          sam: (localUnlocks.sam || []).slice(),
+          isaac: (localUnlocks.isaac || []).slice(),
+          ben: (localUnlocks.ben || []).slice()
+        };
+
+        if(!unlockBodies.length){
+          return Object.assign({}, txResult, {unlocks: nextUnlocks});
         }
-        return {log: merged, tempIdMap: tempIdMap};
+
+        return sbFetch("coin_unlocks", {
+          method: "POST",
+          headers: sbHeaders({"Prefer":"return=representation"}),
+          body: JSON.stringify(unlockBodies.map(function(i){ return i.body; }))
+        }).then(function(rows){
+          const list = rows || [];
+          for(var i = 0; i < list.length; i++){
+            const row = list[i];
+            const meta = unlockBodies[i];
+            if(!meta || !row) continue;
+            nextUnlocks[meta.slug] = (nextUnlocks[meta.slug] || []).map(function(u){
+              if(u.id !== meta.unlock_id) return u;
+              return Object.assign({}, u, {remoteId: row.id});
+            });
+          }
+          return Object.assign({}, txResult, {unlocks: nextUnlocks});
+        }).catch(function(){
+          return Object.assign({}, txResult, {unlocks: nextUnlocks});
+        });
       });
     });
   }
 
   function runSyncJob(job){
     if(job.kind === "balance"){
-      // Always prefer the live balance so out-of-order patches can't leave the cloud stale.
       const balance = (coinsRef.current && coinsRef.current[job.slug] != null)
         ? coinsRef.current[job.slug]
         : job.balance;
+      const b = (job.boosts) || (boostsRef.current && boostsRef.current[job.slug]) || defaultBoost();
       return sbFetch("coin_kids?slug=eq."+encodeURIComponent(job.slug), {
         method: "PATCH",
         headers: sbHeaders({"Prefer":"return=minimal"}),
-        body: JSON.stringify({balance: balance, updated_at: new Date().toISOString()})
+        body: JSON.stringify({
+          balance: balance,
+          double_earns_left: b.doubleEarnsLeft || 0,
+          free_switch: !!b.freeSwitch,
+          updated_at: new Date().toISOString()
+        })
+      }).catch(function(){
+        return sbFetch("coin_kids?slug=eq."+encodeURIComponent(job.slug), {
+          method: "PATCH",
+          headers: sbHeaders({"Prefer":"return=minimal"}),
+          body: JSON.stringify({balance: balance, updated_at: new Date().toISOString()})
+        });
       });
     }
     if(job.kind === "insert"){
       const kidId = kidIdsRef.current[job.slug];
       if(!kidId) return Promise.resolve(null);
+      const body = {
+        kid_id: kidId,
+        entry_type: job.entryType,
+        amount: job.amount,
+        description: job.desc
+      };
+      if(job.source) body.source = job.source;
       return sbFetch("coin_transactions", {
         method: "POST",
         headers: sbHeaders({"Prefer":"return=representation"}),
-        body: JSON.stringify({
-          kid_id: kidId,
-          entry_type: job.entryType,
-          amount: job.amount,
-          description: job.desc
-        })
+        body: JSON.stringify(body)
       }).then(function(rows){
         const row = rows && rows[0] ? rows[0] : null;
         if(row && job.tempId){
@@ -539,7 +863,11 @@ function App(){
             const next = Object.assign({}, l);
             next[job.slug] = (l[job.slug]||[]).map(function(e){
               return e.id === job.tempId
-                ? Object.assign({}, e, {id: row.id, when: formatWhen(row.created_at) || e.when})
+                ? Object.assign({}, e, {
+                    id: row.id,
+                    when: formatWhen(row.created_at) || e.when,
+                    source: row.source || e.source || null
+                  })
                 : e;
             });
             return next;
@@ -554,12 +882,68 @@ function App(){
         headers: sbHeaders({"Prefer":"return=minimal"})
       });
     }
+    if(job.kind === "unlockInsert"){
+      const kidId = kidIdsRef.current[job.slug];
+      if(!kidId) return Promise.resolve(null);
+      return sbFetch("coin_unlocks", {
+        method: "POST",
+        headers: sbHeaders({"Prefer":"return=representation"}),
+        body: JSON.stringify({
+          kid_id: kidId,
+          unlock_id: job.unlockId,
+          unlock_type: job.unlockType,
+          used: !!job.used,
+          unlocked_at: job.at || new Date().toISOString()
+        })
+      }).then(function(rows){
+        const row = rows && rows[0] ? rows[0] : null;
+        if(row){
+          setUnlocks(function(u){
+            const next = Object.assign({}, u);
+            next[job.slug] = (u[job.slug]||[]).map(function(item){
+              return item.id === job.unlockId
+                ? Object.assign({}, item, {remoteId: row.id})
+                : item;
+            });
+            unlocksRef.current = next;
+            return next;
+          });
+        }
+        return row;
+      });
+    }
+    if(job.kind === "unlockUsed"){
+      const kidId = kidIdsRef.current[job.slug];
+      if(job.remoteId){
+        return sbFetch("coin_unlocks?id=eq."+encodeURIComponent(job.remoteId), {
+          method: "PATCH",
+          headers: sbHeaders({"Prefer":"return=minimal"}),
+          body: JSON.stringify({used: true})
+        });
+      }
+      if(!kidId) return Promise.resolve(null);
+      return sbFetch(
+        "coin_unlocks?kid_id=eq."+encodeURIComponent(kidId)+"&unlock_id=eq."+encodeURIComponent(job.unlockId),
+        {
+          method: "PATCH",
+          headers: sbHeaders({"Prefer":"return=minimal"}),
+          body: JSON.stringify({used: true})
+        }
+      );
+    }
+    if(job.kind === "unlockDeleteAll"){
+      if(!job.kidIds || !job.kidIds.length) return Promise.resolve(null);
+      return sbFetch("coin_unlocks?kid_id=in.("+job.kidIds.join(",")+")", {
+        method: "DELETE",
+        headers: sbHeaders({"Prefer":"return=minimal"})
+      });
+    }
     return Promise.resolve();
   }
 
   function enqueueSync(job){
     if(!supabaseReady()) return Promise.resolve(null);
-    if(!syncReadyRef.current || (job.slug && !kidIdsRef.current[job.slug] && job.kind !== "delete")){
+    if(!syncReadyRef.current || (job.slug && !kidIdsRef.current[job.slug] && job.kind !== "delete" && job.kind !== "unlockDeleteAll")){
       pendingSyncRef.current.push(job);
       return Promise.resolve(null);
     }
@@ -574,81 +958,228 @@ function App(){
     }, Promise.resolve());
   }
 
-  function syncBalance(slug, balance){
-    return enqueueSync({kind:"balance", slug:slug, balance:balance});
+  function syncBalance(slug, balance, boostOverride){
+    return enqueueSync({
+      kind:"balance",
+      slug:slug,
+      balance:balance,
+      boosts: boostOverride || (boostsRef.current && boostsRef.current[slug]) || defaultBoost()
+    });
   }
 
-  function syncInsertTx(slug, entryType, amount, desc, tempId){
+  function syncInsertTx(slug, entryType, amount, desc, tempId, source){
     return enqueueSync({
       kind:"insert",
       slug:slug,
       entryType:entryType,
       amount:amount,
       desc:desc,
-      tempId:tempId
+      tempId:tempId,
+      source:source || null
     });
+  }
+
+  function applyUnlocks(slug, nextLog, nextCoins){
+    const owned = {};
+    (unlocksRef.current[slug] || []).forEach(function(u){ owned[u.id] = true; });
+    const fresh = findNewUnlocks(slug, nextLog, nextCoins, owned);
+    if(!fresh.length) return;
+
+    const nextUnlocks = Object.assign({}, unlocksRef.current);
+    nextUnlocks[slug] = (nextUnlocks[slug] || []).concat(fresh);
+    unlocksRef.current = nextUnlocks;
+    setUnlocks(nextUnlocks);
+
+    fresh.forEach(function(u){
+      enqueueSync({
+        kind:"unlockInsert",
+        slug:slug,
+        unlockId:u.id,
+        unlockType:u.type,
+        used:false,
+        at:u.at
+      });
+    });
+
+    setUnlockQueue(function(q){ return q.concat(fresh.map(function(u){
+      return Object.assign({}, u, {slug: slug});
+    })); });
+    try{ tune.fanfare(); }catch(e){}
+    setModal("unlock");
   }
 
   const weekend = useMemo(function(){const d=new Date().getDay();return d===0||d===6;},[]);
   const K = KIDS[kid];
+  const celebrating = unlockQueue[0] || null;
+  const celebrateMeta = celebrating ? REWARD_BY_ID[celebrating.id] : null;
 
   const flash = function(msg){setToast(msg);setTimeout(function(){setToast(null);},1700);};
 
-  const earn = function(amount,desc){
-    const when = new Date().toLocaleString("en-GB");
-    const tempId = "local-"+Date.now();
-    const entry = {id:tempId, type:"earned", amount:amount, desc:desc, when:when};
-    let newBal = 0;
-    setCoins(function(c){
-      const next = Object.assign({}, c);
-      newBal = (c[kid]||0) + amount;
-      next[kid] = newBal;
-      coinsRef.current = next;
-      return next;
+  const dismissUnlock = function(){
+    setUnlockQueue(function(q){
+      const rest = q.slice(1);
+      if(!rest.length) setModal(null);
+      return rest;
     });
-    setLog(function(l){
-      const next = Object.assign({}, l);
-      next[kid] = [entry].concat(l[kid]||[]);
-      logRef.current = next;
-      return next;
-    });
-    flash("+"+amount+" for "+K.name+"!");
-
-    Promise.all([
-      syncInsertTx(kid, "earned", amount, desc, tempId),
-      syncBalance(kid, newBal)
-    ]).then(function(){
-      setCloud("online");
-    }).catch(function(){ setCloud("offline"); });
   };
 
-  const spend = function(amount,desc){
-    if((coinsRef.current[kid]||0) < amount){ flash("Not enough coins!"); return; }
+  const earn = function(amount,desc,source,opts){
+    opts = opts || {};
+    const slug = opts.slug || kid;
+    const skipUnlockCheck = !!opts.skipUnlockCheck;
+    let award = amount;
+    let doubled = false;
+    const nextBoosts = Object.assign({}, boostsRef.current);
+    const kidBoost = Object.assign({}, nextBoosts[slug] || defaultBoost());
+
+    if(!opts.skipDouble && kidBoost.doubleEarnsLeft > 0){
+      award = amount * 2;
+      kidBoost.doubleEarnsLeft -= 1;
+      nextBoosts[slug] = kidBoost;
+      boostsRef.current = nextBoosts;
+      setBoosts(nextBoosts);
+      doubled = true;
+    }
+
     const when = new Date().toLocaleString("en-GB");
-    const tempId = "local-"+Date.now();
-    const entry = {id:tempId, type:"spent", amount:amount, desc:desc, when:when};
+    const tempId = "local-"+Date.now()+"-"+Math.floor(Math.random()*999);
+    const entry = {
+      id:tempId,
+      type:"earned",
+      amount:award,
+      desc:desc,
+      when:when,
+      source: source || null
+    };
     let newBal = 0;
-    setCoins(function(c){
-      const next = Object.assign({}, c);
-      newBal = (c[kid]||0) - amount;
-      next[kid] = newBal;
-      coinsRef.current = next;
-      return next;
-    });
-    setLog(function(l){
-      const next = Object.assign({}, l);
-      next[kid] = [entry].concat(l[kid]||[]);
-      logRef.current = next;
-      return next;
-    });
-    flash("−"+amount+" · "+desc);
+    const nextCoins = Object.assign({}, coinsRef.current);
+    newBal = (nextCoins[slug]||0) + award;
+    nextCoins[slug] = newBal;
+    coinsRef.current = nextCoins;
+    setCoins(nextCoins);
+
+    const nextLog = Object.assign({}, logRef.current);
+    nextLog[slug] = [entry].concat(nextLog[slug]||[]);
+    logRef.current = nextLog;
+    setLog(nextLog);
+
+    if(doubled) flash("2× power-up! +"+award+" for "+KIDS[slug].name+"!");
+    else flash("+"+award+" for "+KIDS[slug].name+"!");
 
     Promise.all([
-      syncInsertTx(kid, "spent", amount, desc, tempId),
-      syncBalance(kid, newBal)
+      syncInsertTx(slug, "earned", award, desc, tempId, source),
+      syncBalance(slug, newBal, kidBoost)
     ]).then(function(){
       setCloud("online");
     }).catch(function(){ setCloud("offline"); });
+
+    if(!skipUnlockCheck) applyUnlocks(slug, nextLog, nextCoins);
+  };
+
+  const spend = function(amount,desc,source,opts){
+    opts = opts || {};
+    const slug = opts.slug || kid;
+    let cost = amount;
+    let usedFree = false;
+    const nextBoosts = Object.assign({}, boostsRef.current);
+    const kidBoost = Object.assign({}, nextBoosts[slug] || defaultBoost());
+
+    if(source === "switch15" && kidBoost.freeSwitch && !opts.forcePaid){
+      cost = 0;
+      usedFree = true;
+      kidBoost.freeSwitch = false;
+      nextBoosts[slug] = kidBoost;
+      boostsRef.current = nextBoosts;
+      setBoosts(nextBoosts);
+    }
+
+    if((coinsRef.current[slug]||0) < cost){ flash("Not enough coins!"); return; }
+
+    const when = new Date().toLocaleString("en-GB");
+    const tempId = "local-"+Date.now()+"-"+Math.floor(Math.random()*999);
+    const entry = {
+      id:tempId,
+      type:"spent",
+      amount:cost,
+      desc: usedFree ? (desc + " (Free Pass)") : desc,
+      when:when,
+      source: source || null
+    };
+    let newBal = 0;
+    const nextCoins = Object.assign({}, coinsRef.current);
+    newBal = (nextCoins[slug]||0) - cost;
+    nextCoins[slug] = newBal;
+    coinsRef.current = nextCoins;
+    setCoins(nextCoins);
+
+    const nextLog = Object.assign({}, logRef.current);
+    nextLog[slug] = [entry].concat(nextLog[slug]||[]);
+    logRef.current = nextLog;
+    setLog(nextLog);
+
+    flash(usedFree ? "Free Switch Pass used!" : ("−"+cost+" · "+desc));
+
+    Promise.all([
+      syncInsertTx(slug, "spent", cost, entry.desc, tempId, source),
+      syncBalance(slug, newBal, kidBoost)
+    ]).then(function(){
+      setCloud("online");
+    }).catch(function(){ setCloud("offline"); });
+
+    applyUnlocks(slug, nextLog, nextCoins);
+  };
+
+  const markPowerupUsed = function(slug, unlockId){
+    const nextUnlocks = Object.assign({}, unlocksRef.current);
+    let remoteId = null;
+    nextUnlocks[slug] = (nextUnlocks[slug] || []).map(function(u){
+      if(u.id !== unlockId) return u;
+      remoteId = u.remoteId || null;
+      return Object.assign({}, u, {used: true});
+    });
+    unlocksRef.current = nextUnlocks;
+    setUnlocks(nextUnlocks);
+    enqueueSync({kind:"unlockUsed", slug:slug, unlockId:unlockId, remoteId:remoteId});
+  };
+
+  const usePowerup = function(unlockId){
+    const slug = kid;
+    const owned = (unlocksRef.current[slug] || []).filter(function(u){
+      return u.id === unlockId && u.type === "powerup" && !u.used;
+    })[0];
+    if(!owned){ flash("Already used!"); return; }
+    const meta = REWARD_BY_ID[unlockId];
+    if(!meta) return;
+
+    if(meta.effect === "double"){
+      const nextBoosts = Object.assign({}, boostsRef.current);
+      const kidBoost = Object.assign({}, nextBoosts[slug] || defaultBoost());
+      kidBoost.doubleEarnsLeft = (kidBoost.doubleEarnsLeft || 0) + 3;
+      nextBoosts[slug] = kidBoost;
+      boostsRef.current = nextBoosts;
+      setBoosts(nextBoosts);
+      markPowerupUsed(slug, unlockId);
+      syncBalance(slug, coinsRef.current[slug] || 0, kidBoost);
+      flash("Double Coin Burst armed!");
+      return;
+    }
+    if(meta.effect === "freeSwitch"){
+      const nextBoosts = Object.assign({}, boostsRef.current);
+      const kidBoost = Object.assign({}, nextBoosts[slug] || defaultBoost());
+      kidBoost.freeSwitch = true;
+      nextBoosts[slug] = kidBoost;
+      boostsRef.current = nextBoosts;
+      setBoosts(nextBoosts);
+      markPowerupUsed(slug, unlockId);
+      syncBalance(slug, coinsRef.current[slug] || 0, kidBoost);
+      flash("Free Switch Pass ready!");
+      return;
+    }
+    if(meta.effect === "coinDrop"){
+      markPowerupUsed(slug, unlockId);
+      earn(5, "Coin Drop power-up", "powerup-coin-boost", {skipDouble:true});
+      return;
+    }
   };
 
   const undoLast = function(){
@@ -683,18 +1214,28 @@ function App(){
   const resetAll = function(){
     setCoins({sam:0,isaac:0,ben:0});
     setLog(emptyLog());
+    const clearedUnlocks = emptyUnlocks();
+    const clearedBoosts = emptyBoosts();
+    unlocksRef.current = clearedUnlocks;
+    boostsRef.current = clearedBoosts;
+    setUnlocks(clearedUnlocks);
+    setBoosts(clearedBoosts);
+    setUnlockQueue([]);
     flash("All kids reset to 0");
     setModal(null);
 
     if(!supabaseReady()) return;
     const ids = kidIdsRef.current;
     const idList = Object.keys(KIDS).map(function(s){ return ids[s]; }).filter(Boolean);
-    const tasks = Object.keys(KIDS).map(function(slug){ return syncBalance(slug, 0); });
+    const tasks = Object.keys(KIDS).map(function(slug){
+      return syncBalance(slug, 0, defaultBoost());
+    });
     if(idList.length){
       tasks.push(sbFetch("coin_transactions?kid_id=in.("+idList.join(",")+")", {
         method: "DELETE",
         headers: sbHeaders({"Prefer":"return=minimal"})
       }));
+      tasks.push(enqueueSync({kind:"unlockDeleteAll", kidIds:idList}));
     }
     Promise.all(tasks).then(function(){ setCloud("online"); }).catch(function(){ setCloud("offline"); });
   };
@@ -706,7 +1247,12 @@ function App(){
     if(!running) return;
     if(secs<=0){
       setRunning(false); tune.stop(); tune.fanfare(); setDone(true);
-      earn(timerJob ? timerJob.coins : 1, (timerJob?timerJob.name+" ("+timerJob.sub+")":"Brush teeth"));
+      const job = timerJob;
+      earn(
+        job ? job.coins : 1,
+        job ? job.name+(job.sub?" ("+job.sub+")":"") : "Brush teeth",
+        job ? job.id : "brush-am"
+      );
       return;
     }
     const t=setTimeout(()=>setSecs(s=>s-1),1000);
@@ -781,11 +1327,32 @@ function App(){
     }catch(e){}
   };
 
+  const onHeroTap = function(key){
+    if(kid === key){
+      setModal("profile");
+      return;
+    }
+    setKid(key);
+  };
+
   const mmss=(s)=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
   const pct = 1-(secs/120);
 
+  const profileStats = kidStats(kid, log, coins);
+  const kidUnlocks = unlocks[kid] || [];
+  const unlockedIds = {};
+  kidUnlocks.forEach(function(u){ unlockedIds[u.id] = u; });
+  const trophyOwned = TROPHIES.filter(function(t){ return unlockedIds[t.id]; });
+  const lockedTrophySlots = Math.max(0, TROPHIES.length - trophyOwned.length);
+  const powerOwned = POWERUPS.map(function(p){
+    const u = unlockedIds[p.id];
+    return u ? Object.assign({}, p, {used: !!u.used, at: u.at}) : null;
+  }).filter(Boolean);
+  const kidBoost = boosts[kid] || defaultBoost();
+  const freeSwitchReady = !!kidBoost.freeSwitch;
+
   /* ---------- row renderers ---------- */
-  const JobRow = ({job,tone,group}) => (
+  const JobRow = ({job,tone}) => (
     <div className="row">
       <Slot light src={IMAGES.jobs[job.id]} label={job.id} icon={job.icon} className="icon-slot"/>
       <div className="rtext">
@@ -793,21 +1360,29 @@ function App(){
         {job.sub && <div className="rsub">{job.sub}</div>}
       </div>
       {job.timer && <button className="timer-mini" title="Start 2-minute brushing timer" onClick={()=>openTimer(job)}>⏱️</button>}
-      <CoinBtn value={job.coins} tone={tone} onClick={()=>earn(job.coins,job.name+(job.sub?" ("+job.sub+")":""))}/>
+      <CoinBtn value={job.coins} tone={tone} onClick={()=>earn(job.coins,job.name+(job.sub?" ("+job.sub+")":""), job.id)}/>
     </div>
   );
 
-  const ShopRow = ({item,tone,locked,section}) => {
-    const cant = coins[kid] < item.coins;
+  const ShopRow = ({item,tone,locked}) => {
+    const isFreeSwitch = item.id === "switch15" && freeSwitchReady;
+    const cost = isFreeSwitch ? 0 : item.coins;
+    const cant = !isFreeSwitch && coins[kid] < item.coins;
     return (
-      <div className={"row "+(locked?"locked ":"")+(cant?"cant":"")}>
+      <div className={"row "+(locked?"locked ":"")+(cant?"cant":"")+(isFreeSwitch?" free-pass":"")}>
         <Slot light src={IMAGES.shop[item.id]} label={item.id} className="icon-slot"/>
         <div className="rtext">
           <div className="rname">{item.name}</div>
           {item.sub && <div className="rsub">{item.sub}</div>}
+          {isFreeSwitch && <div className="rsub free-tag">Free Switch Pass ready!</div>}
         </div>
-        <CoinBtn value={item.coins} tone={tone} disabled={locked||cant}
-          onClick={()=>spend(item.coins,item.name)}/>
+        <CoinBtn
+          value={isFreeSwitch ? 0 : item.coins}
+          word={isFreeSwitch ? "FREE" : undefined}
+          tone={tone}
+          disabled={locked||cant}
+          onClick={()=>spend(cost, item.name, item.id)}
+        />
       </div>
     );
   };
@@ -831,10 +1406,11 @@ function App(){
       {/* ---------------- HERO SELECT ---------------- */}
       <div className="hero-row">
         {Object.entries(KIDS).map(([key,k])=>(
-          <div key={key} className={"hero-card "+k.cls+(kid===key?" active":"")} onClick={()=>setKid(key)}>
+          <div key={key} className={"hero-card "+k.cls+(kid===key?" active":"")} onClick={()=>onHeroTap(key)}>
             <Slot src={IMAGES[k.img]} label={k.name+" photo"} className="portrait"/>
             <div className="comic hname">{k.name} {k.badge}</div>
             <div className="hbal">🪙 {coins[key]}</div>
+            {kid===key && <div className="hprofile-hint">Tap again for profile</div>}
           </div>
         ))}
       </div>
@@ -845,6 +1421,12 @@ function App(){
         <div>
           <div className="lbl">{K.name}'s coin bank</div>
           <div className="comic big">{coins[kid]}</div>
+          {(kidBoost.doubleEarnsLeft > 0 || kidBoost.freeSwitch) && (
+            <div className="boost-pills">
+              {kidBoost.doubleEarnsLeft > 0 && <span className="boost-pill">⚡ 2× ×{kidBoost.doubleEarnsLeft}</span>}
+              {kidBoost.freeSwitch && <span className="boost-pill">🎮 Free Switch</span>}
+            </div>
+          )}
         </div>
         <div className="tap">Tap the lid<br/>to tip them out ⤵</div>
       </div>
@@ -887,7 +1469,7 @@ function App(){
                 <div className="rname">Mum's Food Tax</div>
                 <div className="rsub">Ask nicely — 2 coins per request</div>
               </div>
-              <CoinBtn value={2} word="PER REQ" onClick={()=>spend(2,"Mum's Food Tax")} disabled={coins[kid]<2}/>
+              <CoinBtn value={2} word="PER REQ" onClick={()=>spend(2,"Mum's Food Tax","tax")} disabled={coins[kid]<2}/>
             </div>
 
             <div className="band red comic">★ Savings Shop — weekends ★</div>
@@ -902,7 +1484,7 @@ function App(){
         <div>
           <div className="hero-art">
             {Object.entries(KIDS).map(([key,k])=>(
-              <div key={key} onClick={()=>setKid(key)} style={{cursor:"pointer"}}>
+              <div key={key} onClick={()=>onHeroTap(key)} style={{cursor:"pointer"}}>
                 <Slot src={IMAGES[k.img]} label={k.name+" hero art"} className="big-slot"/>
                 <div className="comic cap" style={{color:k.colour}}>{k.name} {k.badge}</div>
               </div>
@@ -914,8 +1496,9 @@ function App(){
           <div className="rule"><span className="num">1</span><span>Do the job ➜ get your coins</span></div>
           <div className="rule"><span className="num">2</span><span>Payday every day 🪙 — Shop Day is <b>Saturday</b></span></div>
           <div className="rule"><span className="num">3</span><span>Spend now or save up for something bigger — your choice!</span></div>
-          <button className="btn tax" onClick={()=>spend(2,"Mum's Food Tax")}>🍽️ Mum's Food Tax −2</button>
+          <button className="btn tax" onClick={()=>spend(2,"Mum's Food Tax","tax")}>🍽️ Mum's Food Tax −2</button>
           <button className="btn hist" onClick={()=>setModal("history")}>📋 {K.name}'s History</button>
+          <button className="btn profile" onClick={()=>setModal("profile")}>🏅 {K.name}'s Profile</button>
         </div>
       </div>
 
@@ -1005,6 +1588,110 @@ function App(){
         </div>
       )}
 
+      {/* ---------------- PROFILE MODAL ---------------- */}
+      {modal==="profile" && (
+        <div className="modal" onClick={()=>setModal(null)}>
+          <div className="sheet profile-sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-head" style={{background:K.colour}}>
+              <h2 className="comic outline-2">🏅 {K.name}'s Profile</h2>
+            </div>
+            <div className="sheet-body">
+              <div className="profile-hero">
+                <Slot src={IMAGES[K.img]} label={K.name} className="profile-portrait"/>
+                <div>
+                  <div className="comic profile-name">{K.name} {K.badge}</div>
+                  <div className="profile-bal">🪙 {coins[kid]} coins</div>
+                </div>
+              </div>
+
+              <div className="stats-strip">
+                <div className="stat"><div className="stat-n">{profileStats.earned}</div><div className="stat-l">Earned</div></div>
+                <div className="stat"><div className="stat-n">{profileStats.spent}</div><div className="stat-l">Spent</div></div>
+                <div className="stat"><div className="stat-n">{profileStats.jobsDone}</div><div className="stat-l">Jobs</div></div>
+                <div className="stat"><div className="stat-n">{trophyOwned.length}</div><div className="stat-l">Trophies</div></div>
+              </div>
+
+              <div className="band gold comic">★ Trophies ★</div>
+              <div className="trophy-grid">
+                {trophyOwned.map(function(t){
+                  return (
+                    <div key={t.id} className="trophy-tile earned">
+                      <div className="trophy-ico">{t.icon}</div>
+                      <div className="trophy-name">{t.name}</div>
+                    </div>
+                  );
+                })}
+                {(function(){
+                  const slots = [];
+                  for(var i = 0; i < lockedTrophySlots; i++){
+                    slots.push(
+                      <div key={"locked-"+i} className="trophy-tile locked">
+                        <div className="trophy-ico">❓</div>
+                        <div className="trophy-name">???</div>
+                      </div>
+                    );
+                  }
+                  return slots;
+                })()}
+                {trophyOwned.length === 0 && lockedTrophySlots === 0 && (
+                  <div className="empty-note">Keep being a hero — surprises await!</div>
+                )}
+              </div>
+
+              <div className="band purple comic">★ Power-ups ★</div>
+              <div className="power-list">
+                {powerOwned.length === 0 && (
+                  <div className="empty-note">No power-ups yet — keep earning!</div>
+                )}
+                {powerOwned.map(function(p){
+                  return (
+                    <div key={p.id} className={"power-row "+(p.used?"used":"")}>
+                      <div className="power-ico">{p.icon}</div>
+                      <div className="power-text">
+                        <div className="power-name">{p.name}</div>
+                        <div className="power-blurb">{p.blurb}</div>
+                      </div>
+                      {p.used
+                        ? <span className="used-badge">Used</span>
+                        : <button className="btn use-btn" type="button" onClick={()=>usePowerup(p.id)}>Use</button>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button className="btn hist" onClick={()=>setModal("history")}>📋 View History</button>
+              <button className="btn close" onClick={()=>setModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- UNLOCK CELEBRATION ---------------- */}
+      {modal==="unlock" && celebrating && celebrateMeta && (
+        <div className="modal unlock-modal">
+          <div className="sheet unlock-sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-head" style={{background:KIDS[celebrating.slug || kid].colour}}>
+              <h2 className="comic outline-2">
+                {celebrateMeta.type === "powerup" ? "⚡ Power-up!" : "🏆 Trophy!"}
+              </h2>
+            </div>
+            <div className="sheet-body unlock-body">
+              <div className="unlock-burst">{celebrateMeta.icon}</div>
+              <div className="comic unlock-title pop">{celebrateMeta.name}</div>
+              <div className="unlock-sub">
+                Amazing work, {KIDS[celebrating.slug || kid].name}!
+                {celebrateMeta.type === "powerup"
+                  ? " A power-up is waiting on your profile."
+                  : " It's yours forever — check your profile!"}
+              </div>
+              <button className="btn go" onClick={dismissUnlock}>
+                {unlockQueue.length > 1 ? "Next surprise!" : "Awesome!"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ---------------- PARENT SETTINGS ---------------- */}
       {modal==="settings" && (
         <div className="modal" onClick={()=>setModal(null)}>
@@ -1020,6 +1707,9 @@ function App(){
               </div>
               <div className="settings-note" style={{marginTop:"8px"}}>
                 Sync: {cloud==="online" ? "☁ Shared (Supabase)" : cloud==="syncing" ? "☁ Connecting…" : cloud==="offline" ? "⚠ Offline — this device only" : "📱 This device only"}
+              </div>
+              <div className="settings-note">
+                Unlocks: {(unlocks[kid]||[]).length} · Boosts: 2×{kidBoost.doubleEarnsLeft}{kidBoost.freeSwitch?" · Free Switch":""}
               </div>
               <button className="btn undo" onClick={undoLast} disabled={!log[kid].length}>↩ Undo last for {K.name}</button>
               <button className="btn stop" onClick={resetAll}>Reset all kids to 0</button>

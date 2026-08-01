@@ -241,6 +241,169 @@ var SAVINGS_SHOP = [{
   coins: 250
 }];
 
+/* Secret milestone trophies (titles only revealed on unlock / profile) */
+var TROPHIES = [{
+  id: "kind-5",
+  name: "Kind Heart",
+  icon: "💛",
+  check: function check(s) {
+    return s.count.kind >= 5;
+  }
+}, {
+  id: "kind-15",
+  name: "Super Helper",
+  icon: "🌟",
+  check: function check(s) {
+    return s.count.kind >= 15;
+  }
+}, {
+  id: "brush-10",
+  name: "Brush Boss",
+  icon: "🪥",
+  check: function check(s) {
+    return s.brushTotal >= 10;
+  }
+}, {
+  id: "bed-7",
+  name: "Bed Maker",
+  icon: "🛏️",
+  check: function check(s) {
+    return s.count.bed >= 7;
+  }
+}, {
+  id: "homework-5",
+  name: "Homework Champ",
+  icon: "📚",
+  check: function check(s) {
+    return s.count.homework >= 5;
+  }
+}, {
+  id: "tidy-5",
+  name: "Tidy Titan",
+  icon: "🧹",
+  check: function check(s) {
+    return s.count.tidy >= 5;
+  }
+}, {
+  id: "cook-5",
+  name: "Kitchen Hero",
+  icon: "👨‍🍳",
+  check: function check(s) {
+    return s.count.cook >= 5;
+  }
+}, {
+  id: "club-3",
+  name: "Club Kid",
+  icon: "⚽",
+  check: function check(s) {
+    return s.count.club >= 3;
+  }
+}, {
+  id: "earned-50",
+  name: "Coin Collector",
+  icon: "🏆",
+  check: function check(s) {
+    return s.earned >= 50;
+  }
+}, {
+  id: "balance-50",
+  name: "Big Saver",
+  icon: "🏦",
+  check: function check(s) {
+    return s.balance >= 50;
+  }
+}, {
+  id: "first-spend",
+  name: "First Treat",
+  icon: "🎁",
+  check: function check(s) {
+    return s.spentCount >= 1;
+  }
+}];
+
+/* Usable power-ups — unlocked secretly, activated from the profile */
+var POWERUPS = [{
+  id: "double-3",
+  name: "Double Coin Burst",
+  icon: "⚡",
+  effect: "double",
+  blurb: "Next 3 earns give double coins!",
+  check: function check(s) {
+    return s.earned >= 20;
+  }
+}, {
+  id: "free-switch",
+  name: "Free Switch Pass",
+  icon: "🎮",
+  effect: "freeSwitch",
+  blurb: "One free Nintendo Switch (15 min)!",
+  check: function check(s) {
+    return s.switchSpends >= 5 || s.earned >= 30;
+  }
+}, {
+  id: "coin-boost",
+  name: "Coin Drop",
+  icon: "🪙",
+  effect: "coinDrop",
+  blurb: "Tap Use for an instant +5 coins!",
+  check: function check(s) {
+    return s.count.kind >= 10;
+  }
+}];
+var ALL_REWARDS = TROPHIES.map(function (t) {
+  return Object.assign({}, t, {
+    type: "trophy"
+  });
+}).concat(POWERUPS.map(function (p) {
+  return Object.assign({}, p, {
+    type: "powerup"
+  });
+}));
+var REWARD_BY_ID = {};
+ALL_REWARDS.forEach(function (r) {
+  REWARD_BY_ID[r.id] = r;
+});
+
+/* Infer source from older log descriptions that lack a source field */
+var DESC_SOURCE = {
+  "Brush teeth (Morning)": "brush-am",
+  "Brush teeth (Night)": "brush-pm",
+  "Make your bed": "bed",
+  "Get dressed on time": "dressed",
+  "Homework, no fuss": "homework",
+  "Sit nicely at the table": "sit",
+  "Eat your dinner": "dinner",
+  "Tidy your room": "tidy",
+  "Help cook or set the table": "cook",
+  "Go to a club or activity": "club",
+  "Be kind & helpful": "kind",
+  "Breakfast TV": "tv",
+  "Screen Time": "screentime",
+  "Choose a special snack": "snack",
+  "Friday Movie Night": "movie",
+  "Nintendo Switch": "switch15",
+  "Mum's Food Tax": "tax",
+  "Small toy": "toy-small",
+  "Park trip + snack": "park",
+  "Stay up later": "late",
+  "Day out": "dayout",
+  "Bigger toy": "toy-big",
+  "Cinema trip": "cinema"
+};
+var JOB_SOURCES = {
+  "brush-am": 1,
+  "brush-pm": 1,
+  "bed": 1,
+  "dressed": 1,
+  "homework": 1,
+  "sit": 1,
+  "dinner": 1,
+  "tidy": 1,
+  "cook": 1,
+  "club": 1,
+  "kind": 1
+};
+
 /* ---------- image placeholder component ---------- */
 function Slot(_ref) {
   var src = _ref.src,
@@ -362,15 +525,61 @@ function emptyLog() {
     ben: []
   };
 }
+function emptyUnlocks() {
+  return {
+    sam: [],
+    isaac: [],
+    ben: []
+  };
+}
+function defaultBoost() {
+  return {
+    doubleEarnsLeft: 0,
+    freeSwitch: false
+  };
+}
+function emptyBoosts() {
+  return {
+    sam: defaultBoost(),
+    isaac: defaultBoost(),
+    ben: defaultBoost()
+  };
+}
+function normalizeUnlockList(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter(function (u) {
+    return u && u.id;
+  }).map(function (u) {
+    return {
+      id: u.id,
+      type: u.type === "powerup" ? "powerup" : "trophy",
+      used: !!u.used,
+      at: u.at || u.unlocked_at || new Date().toISOString(),
+      remoteId: u.remoteId || null
+    };
+  });
+}
 function loadState() {
   try {
     var raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {
-      kid: "sam",
-      coins: Object.assign({}, DEFAULT_COINS),
-      log: emptyLog()
-    };
+    if (!raw) {
+      return {
+        kid: "sam",
+        coins: Object.assign({}, DEFAULT_COINS),
+        log: emptyLog(),
+        unlocks: emptyUnlocks(),
+        boosts: emptyBoosts()
+      };
+    }
     var parsed = JSON.parse(raw);
+    var boosts = emptyBoosts();
+    Object.keys(KIDS).forEach(function (slug) {
+      var b = parsed.boosts && parsed.boosts[slug] || {};
+      boosts[slug] = {
+        doubleEarnsLeft: Math.max(0, Number(b.doubleEarnsLeft) || 0),
+        freeSwitch: !!b.freeSwitch
+      };
+    });
     return {
       kid: parsed.kid && KIDS[parsed.kid] ? parsed.kid : "sam",
       coins: Object.assign({}, DEFAULT_COINS, parsed.coins || {}),
@@ -378,13 +587,21 @@ function loadState() {
         sam: Array.isArray(parsed.log && parsed.log.sam) ? parsed.log.sam : [],
         isaac: Array.isArray(parsed.log && parsed.log.isaac) ? parsed.log.isaac : [],
         ben: Array.isArray(parsed.log && parsed.log.ben) ? parsed.log.ben : []
-      }
+      },
+      unlocks: {
+        sam: normalizeUnlockList(parsed.unlocks && parsed.unlocks.sam),
+        isaac: normalizeUnlockList(parsed.unlocks && parsed.unlocks.isaac),
+        ben: normalizeUnlockList(parsed.unlocks && parsed.unlocks.ben)
+      },
+      boosts: boosts
     };
   } catch (e) {
     return {
       kid: "sam",
       coins: Object.assign({}, DEFAULT_COINS),
-      log: emptyLog()
+      log: emptyLog(),
+      unlocks: emptyUnlocks(),
+      boosts: emptyBoosts()
     };
   }
 }
@@ -452,6 +669,73 @@ function localIsAhead(localCoins, localLog, remoteCoins, remoteLog) {
     return (localCoins[slug] || 0) > (remoteCoins[slug] || 0);
   }) || totalCoins(localCoins) > totalCoins(remoteCoins) || logCount(localLog) > logCount(remoteLog) && totalCoins(localCoins) >= totalCoins(remoteCoins);
 }
+function entrySource(e) {
+  if (e && e.source) return e.source;
+  if (e && e.desc && DESC_SOURCE[e.desc]) return DESC_SOURCE[e.desc];
+  if (e && e.desc && e.desc.indexOf("Nintendo Switch") === 0) {
+    if (e.desc.indexOf("30") >= 0) return "switch30";
+    return "switch15";
+  }
+  return null;
+}
+function kidStats(slug, log, coins) {
+  var entries = log && log[slug] || [];
+  var count = {};
+  var earned = 0;
+  var spent = 0;
+  var spentCount = 0;
+  var jobsDone = 0;
+  var brushTotal = 0;
+  var switchSpends = 0;
+  entries.forEach(function (e) {
+    var src = entrySource(e);
+    if (e.type === "earned") {
+      earned += Number(e.amount) || 0;
+      if (src && JOB_SOURCES[src]) {
+        jobsDone += 1;
+        count[src] = (count[src] || 0) + 1;
+        if (src === "brush-am" || src === "brush-pm") brushTotal += 1;
+      } else if (src) {
+        count[src] = (count[src] || 0) + 1;
+      }
+    } else if (e.type === "spent") {
+      spent += Number(e.amount) || 0;
+      spentCount += 1;
+      if (src) {
+        count[src] = (count[src] || 0) + 1;
+        if (src === "switch15" || src === "switch30") switchSpends += 1;
+      }
+    }
+  });
+  return {
+    count: count,
+    earned: earned,
+    spent: spent,
+    spentCount: spentCount,
+    jobsDone: jobsDone,
+    brushTotal: brushTotal,
+    switchSpends: switchSpends,
+    balance: coins && coins[slug] || 0
+  };
+}
+function findNewUnlocks(slug, log, coins, ownedIds) {
+  var stats = kidStats(slug, log, coins);
+  var fresh = [];
+  ALL_REWARDS.forEach(function (reward) {
+    if (ownedIds[reward.id]) return;
+    try {
+      if (reward.check(stats)) {
+        fresh.push({
+          id: reward.id,
+          type: reward.type,
+          used: false,
+          at: new Date().toISOString()
+        });
+      }
+    } catch (err) {}
+  });
+  return fresh;
+}
 
 /* ================= APP ================= */
 function App() {
@@ -470,34 +754,46 @@ function App() {
     _useState6 = _slicedToArray(_useState5, 2),
     log = _useState6[0],
     setLog = _useState6[1];
-  var _useState7 = useState(null),
+  var _useState7 = useState(initial.unlocks),
     _useState8 = _slicedToArray(_useState7, 2),
-    modal = _useState8[0],
-    setModal = _useState8[1]; // 'vault' | 'timer' | 'history' | 'settings'
-  var _useState9 = useState(null),
+    unlocks = _useState8[0],
+    setUnlocks = _useState8[1];
+  var _useState9 = useState(initial.boosts),
     _useState0 = _slicedToArray(_useState9, 2),
-    timerJob = _useState0[0],
-    setTimerJob = _useState0[1];
-  var _useState1 = useState(120),
+    boosts = _useState0[0],
+    setBoosts = _useState0[1];
+  var _useState1 = useState(null),
     _useState10 = _slicedToArray(_useState1, 2),
-    secs = _useState10[0],
-    setSecs = _useState10[1];
-  var _useState11 = useState(false),
+    modal = _useState10[0],
+    setModal = _useState10[1]; // vault | timer | history | settings | profile | unlock
+  var _useState11 = useState([]),
     _useState12 = _slicedToArray(_useState11, 2),
-    running = _useState12[0],
-    setRunning = _useState12[1];
-  var _useState13 = useState(false),
+    unlockQueue = _useState12[0],
+    setUnlockQueue = _useState12[1];
+  var _useState13 = useState(null),
     _useState14 = _slicedToArray(_useState13, 2),
-    done = _useState14[0],
-    setDone = _useState14[1];
-  var _useState15 = useState(null),
+    timerJob = _useState14[0],
+    setTimerJob = _useState14[1];
+  var _useState15 = useState(120),
     _useState16 = _slicedToArray(_useState15, 2),
-    toast = _useState16[0],
-    setToast = _useState16[1];
-  var _useState17 = useState(supabaseReady() ? "syncing" : "local"),
+    secs = _useState16[0],
+    setSecs = _useState16[1];
+  var _useState17 = useState(false),
     _useState18 = _slicedToArray(_useState17, 2),
-    cloud = _useState18[0],
-    setCloud = _useState18[1];
+    running = _useState18[0],
+    setRunning = _useState18[1];
+  var _useState19 = useState(false),
+    _useState20 = _slicedToArray(_useState19, 2),
+    done = _useState20[0],
+    setDone = _useState20[1];
+  var _useState21 = useState(null),
+    _useState22 = _slicedToArray(_useState21, 2),
+    toast = _useState22[0],
+    setToast = _useState22[1];
+  var _useState23 = useState(supabaseReady() ? "syncing" : "local"),
+    _useState24 = _slicedToArray(_useState23, 2),
+    cloud = _useState24[0],
+    setCloud = _useState24[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -505,41 +801,63 @@ function App() {
   var pendingSyncRef = useRef([]);
   var coinsRef = useRef(initial.coins);
   var logRef = useRef(initial.log);
+  var unlocksRef = useRef(initial.unlocks);
+  var boostsRef = useRef(initial.boosts);
   var tune = useBrushingTune();
   useEffect(function () {
     coinsRef.current = coins;
     logRef.current = log;
-  }, [coins, log]);
+    unlocksRef.current = unlocks;
+    boostsRef.current = boosts;
+  }, [coins, log, unlocks, boosts]);
   useEffect(function () {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         kid: kid,
         coins: coins,
-        log: log
+        log: log,
+        unlocks: unlocks,
+        boosts: boosts
       }));
     } catch (e) {}
-  }, [kid, coins, log]);
+  }, [kid, coins, log, unlocks, boosts]);
   useEffect(function () {
     if (!supabaseReady() || hydratedRef.current) return;
     hydratedRef.current = true;
-    Promise.all([sbFetch("coin_kids?select=id,slug,balance&order=sort_order.asc", {
+    Promise.all([sbFetch("coin_kids?select=id,slug,balance,double_earns_left,free_switch&order=sort_order.asc", {
       headers: sbHeaders()
-    }), sbFetch("coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc", {
+    }).catch(function () {
+      return sbFetch("coin_kids?select=id,slug,balance&order=sort_order.asc", {
+        headers: sbHeaders()
+      });
+    }), sbFetch("coin_transactions?select=id,kid_id,entry_type,amount,description,source,created_at&order=created_at.desc", {
       headers: sbHeaders()
+    }).catch(function () {
+      return sbFetch("coin_transactions?select=id,kid_id,entry_type,amount,description,created_at&order=created_at.desc", {
+        headers: sbHeaders()
+      });
+    }), sbFetch("coin_unlocks?select=id,kid_id,unlock_id,unlock_type,used,unlocked_at&order=unlocked_at.asc", {
+      headers: sbHeaders()
+    }).catch(function () {
+      return [];
     })]).then(function (results) {
       var kids = results[0] || [];
       var txs = results[1] || [];
+      var remoteUnlockRows = results[2] || [];
       var ids = {};
       var remoteCoins = Object.assign({}, DEFAULT_COINS);
+      var remoteBoosts = emptyBoosts();
       kids.forEach(function (row) {
         if (KIDS[row.slug]) {
           ids[row.slug] = row.id;
           remoteCoins[row.slug] = Number(row.balance) || 0;
+          remoteBoosts[row.slug] = {
+            doubleEarnsLeft: Math.max(0, Number(row.double_earns_left) || 0),
+            freeSwitch: !!row.free_switch
+          };
         }
       });
       kidIdsRef.current = ids;
-      // Keep syncReadyRef false until hydrate finishes so earns during fetch stay queued.
-
       var idToSlug = {};
       Object.keys(ids).forEach(function (slug) {
         idToSlug[ids[slug]] = slug;
@@ -553,26 +871,38 @@ function App() {
           type: tx.entry_type,
           amount: Number(tx.amount) || 0,
           desc: tx.description,
+          source: tx.source || null,
           when: formatWhen(tx.created_at)
         });
       });
-
-      // Use live local state (may have changed while the fetch was in flight).
+      var remoteUnlocks = emptyUnlocks();
+      remoteUnlockRows.forEach(function (row) {
+        var slug = idToSlug[row.kid_id];
+        if (!slug) return;
+        remoteUnlocks[slug].push({
+          id: row.unlock_id,
+          type: row.unlock_type === "powerup" ? "powerup" : "trophy",
+          used: !!row.used,
+          at: row.unlocked_at || new Date().toISOString(),
+          remoteId: row.id
+        });
+      });
       var liveCoins = Object.assign({}, DEFAULT_COINS, coinsRef.current || {});
       var liveLog = {
         sam: logRef.current && logRef.current.sam || [],
         isaac: logRef.current && logRef.current.isaac || [],
         ben: logRef.current && logRef.current.ben || []
       };
+      var liveUnlocks = unlocksRef.current || emptyUnlocks();
+      var liveBoosts = boostsRef.current || emptyBoosts();
       var remoteEmpty = totalCoins(remoteCoins) === 0 && logCount(remoteLog) === 0;
       var localHasData = totalCoins(liveCoins) > 0 || logCount(liveLog) > 0;
       var preferLocal = remoteEmpty && localHasData || localIsAhead(liveCoins, liveLog, remoteCoins, remoteLog);
       if (preferLocal && Object.keys(ids).length) {
-        return pushLocalToCloud(liveCoins, liveLog, ids, remoteLog).then(function (result) {
+        return pushLocalToCloud(liveCoins, liveLog, ids, remoteLog, liveUnlocks, liveBoosts).then(function (result) {
           var mappedLog = result && result.log ? result.log : result || liveLog;
           var tempIdMap = result && result.tempIdMap || {};
-
-          // Keep whatever the user has now (including earns during the upload).
+          var mappedUnlocks = result && result.unlocks || liveUnlocks;
           var latestCoins = Object.assign({}, DEFAULT_COINS, coinsRef.current || liveCoins);
           setLog(function (current) {
             var out = emptyLog();
@@ -582,15 +912,16 @@ function App() {
                 return mapped ? Object.assign({}, e, mapped) : e;
               });
             });
-            // If current was somehow empty, fall back to mapped log.
             if (logCount(out) === 0 && logCount(mappedLog) > 0) return mappedLog;
             logRef.current = out;
             return out;
           });
           coinsRef.current = latestCoins;
           setCoins(latestCoins);
-
-          // Drop insert jobs already uploaded; keep anything newer for flush.
+          unlocksRef.current = mappedUnlocks;
+          setUnlocks(mappedUnlocks);
+          boostsRef.current = liveBoosts;
+          setBoosts(liveBoosts);
           pendingSyncRef.current = pendingSyncRef.current.filter(function (job) {
             return !(job.kind === "insert" && tempIdMap[job.tempId]);
           });
@@ -599,7 +930,8 @@ function App() {
             return runSyncJob({
               kind: "balance",
               slug: slug,
-              balance: latestCoins[slug] || 0
+              balance: latestCoins[slug] || 0,
+              boosts: liveBoosts[slug]
             });
           });
           return Promise.all(balTasks).then(function () {
@@ -612,17 +944,22 @@ function App() {
       pendingSyncRef.current = [];
       coinsRef.current = remoteCoins;
       logRef.current = remoteLog;
+      unlocksRef.current = remoteUnlocks;
+      boostsRef.current = remoteBoosts;
       setCoins(remoteCoins);
       setLog(remoteLog);
+      setUnlocks(remoteUnlocks);
+      setBoosts(remoteBoosts);
       syncReadyRef.current = true;
       setCloud("online");
     }).catch(function () {
       setCloud("offline");
     });
   }, []);
-  function pushLocalToCloud(localCoins, localLog, ids, remoteLog) {
+  function pushLocalToCloud(localCoins, localLog, ids, remoteLog, localUnlocks, localBoosts) {
     var patches = Object.keys(KIDS).map(function (slug) {
       if (!ids[slug]) return Promise.resolve();
+      var b = localBoosts && localBoosts[slug] || defaultBoost();
       return sbFetch("coin_kids?slug=eq." + encodeURIComponent(slug), {
         method: "PATCH",
         headers: sbHeaders({
@@ -630,8 +967,21 @@ function App() {
         }),
         body: JSON.stringify({
           balance: localCoins[slug] || 0,
+          double_earns_left: b.doubleEarnsLeft || 0,
+          free_switch: !!b.freeSwitch,
           updated_at: new Date().toISOString()
         })
+      }).catch(function () {
+        return sbFetch("coin_kids?slug=eq." + encodeURIComponent(slug), {
+          method: "PATCH",
+          headers: sbHeaders({
+            "Prefer": "return=minimal"
+          }),
+          body: JSON.stringify({
+            balance: localCoins[slug] || 0,
+            updated_at: new Date().toISOString()
+          })
+        });
       });
     });
     var unsynced = [];
@@ -648,7 +998,8 @@ function App() {
             kid_id: kidId,
             entry_type: entry.type === "spent" ? "spent" : "earned",
             amount: entry.amount,
-            description: entry.desc || ""
+            description: entry.desc || "",
+            source: entry.source || null
           }
         });
       });
@@ -681,11 +1032,10 @@ function App() {
         merged[slug] = out;
       });
       var tempIdMap = {};
-      if (!unsynced.length) return {
+      var txPromise = !unsynced.length ? Promise.resolve({
         log: merged,
         tempIdMap: tempIdMap
-      };
-      return sbFetch("coin_transactions", {
+      }) : sbFetch("coin_transactions", {
         method: "POST",
         headers: sbHeaders({
           "Prefer": "return=representation"
@@ -704,6 +1054,7 @@ function App() {
             type: tx.entry_type,
             amount: Number(tx.amount) || 0,
             desc: tx.description,
+            source: tx.source || meta.body.source || null,
             when: formatWhen(tx.created_at)
           };
           tempIdMap[meta.tempId] = mapped;
@@ -723,12 +1074,75 @@ function App() {
           tempIdMap: tempIdMap
         };
       });
+      return txPromise.then(function (txResult) {
+        var unlockBodies = [];
+        Object.keys(KIDS).forEach(function (slug) {
+          var kidId = ids[slug];
+          if (!kidId) return;
+          (localUnlocks[slug] || []).forEach(function (u) {
+            if (u.remoteId) return;
+            unlockBodies.push({
+              slug: slug,
+              unlock_id: u.id,
+              body: {
+                kid_id: kidId,
+                unlock_id: u.id,
+                unlock_type: u.type === "powerup" ? "powerup" : "trophy",
+                used: !!u.used,
+                unlocked_at: u.at || new Date().toISOString()
+              }
+            });
+          });
+        });
+        var nextUnlocks = {
+          sam: (localUnlocks.sam || []).slice(),
+          isaac: (localUnlocks.isaac || []).slice(),
+          ben: (localUnlocks.ben || []).slice()
+        };
+        if (!unlockBodies.length) {
+          return Object.assign({}, txResult, {
+            unlocks: nextUnlocks
+          });
+        }
+        return sbFetch("coin_unlocks", {
+          method: "POST",
+          headers: sbHeaders({
+            "Prefer": "return=representation"
+          }),
+          body: JSON.stringify(unlockBodies.map(function (i) {
+            return i.body;
+          }))
+        }).then(function (rows) {
+          var list = rows || [];
+          var _loop2 = function _loop2() {
+            var row = list[i];
+            var meta = unlockBodies[i];
+            if (!meta || !row) return 1; // continue
+            nextUnlocks[meta.slug] = (nextUnlocks[meta.slug] || []).map(function (u) {
+              if (u.id !== meta.unlock_id) return u;
+              return Object.assign({}, u, {
+                remoteId: row.id
+              });
+            });
+          };
+          for (var i = 0; i < list.length; i++) {
+            if (_loop2()) continue;
+          }
+          return Object.assign({}, txResult, {
+            unlocks: nextUnlocks
+          });
+        }).catch(function () {
+          return Object.assign({}, txResult, {
+            unlocks: nextUnlocks
+          });
+        });
+      });
     });
   }
   function runSyncJob(job) {
     if (job.kind === "balance") {
-      // Always prefer the live balance so out-of-order patches can't leave the cloud stale.
       var balance = coinsRef.current && coinsRef.current[job.slug] != null ? coinsRef.current[job.slug] : job.balance;
+      var b = job.boosts || boostsRef.current && boostsRef.current[job.slug] || defaultBoost();
       return sbFetch("coin_kids?slug=eq." + encodeURIComponent(job.slug), {
         method: "PATCH",
         headers: sbHeaders({
@@ -736,24 +1150,39 @@ function App() {
         }),
         body: JSON.stringify({
           balance: balance,
+          double_earns_left: b.doubleEarnsLeft || 0,
+          free_switch: !!b.freeSwitch,
           updated_at: new Date().toISOString()
         })
+      }).catch(function () {
+        return sbFetch("coin_kids?slug=eq." + encodeURIComponent(job.slug), {
+          method: "PATCH",
+          headers: sbHeaders({
+            "Prefer": "return=minimal"
+          }),
+          body: JSON.stringify({
+            balance: balance,
+            updated_at: new Date().toISOString()
+          })
+        });
       });
     }
     if (job.kind === "insert") {
       var kidId = kidIdsRef.current[job.slug];
       if (!kidId) return Promise.resolve(null);
+      var body = {
+        kid_id: kidId,
+        entry_type: job.entryType,
+        amount: job.amount,
+        description: job.desc
+      };
+      if (job.source) body.source = job.source;
       return sbFetch("coin_transactions", {
         method: "POST",
         headers: sbHeaders({
           "Prefer": "return=representation"
         }),
-        body: JSON.stringify({
-          kid_id: kidId,
-          entry_type: job.entryType,
-          amount: job.amount,
-          description: job.desc
-        })
+        body: JSON.stringify(body)
       }).then(function (rows) {
         var row = rows && rows[0] ? rows[0] : null;
         if (row && job.tempId) {
@@ -762,7 +1191,8 @@ function App() {
             next[job.slug] = (l[job.slug] || []).map(function (e) {
               return e.id === job.tempId ? Object.assign({}, e, {
                 id: row.id,
-                when: formatWhen(row.created_at) || e.when
+                when: formatWhen(row.created_at) || e.when,
+                source: row.source || e.source || null
               }) : e;
             });
             return next;
@@ -779,11 +1209,76 @@ function App() {
         })
       });
     }
+    if (job.kind === "unlockInsert") {
+      var _kidId = kidIdsRef.current[job.slug];
+      if (!_kidId) return Promise.resolve(null);
+      return sbFetch("coin_unlocks", {
+        method: "POST",
+        headers: sbHeaders({
+          "Prefer": "return=representation"
+        }),
+        body: JSON.stringify({
+          kid_id: _kidId,
+          unlock_id: job.unlockId,
+          unlock_type: job.unlockType,
+          used: !!job.used,
+          unlocked_at: job.at || new Date().toISOString()
+        })
+      }).then(function (rows) {
+        var row = rows && rows[0] ? rows[0] : null;
+        if (row) {
+          setUnlocks(function (u) {
+            var next = Object.assign({}, u);
+            next[job.slug] = (u[job.slug] || []).map(function (item) {
+              return item.id === job.unlockId ? Object.assign({}, item, {
+                remoteId: row.id
+              }) : item;
+            });
+            unlocksRef.current = next;
+            return next;
+          });
+        }
+        return row;
+      });
+    }
+    if (job.kind === "unlockUsed") {
+      var _kidId2 = kidIdsRef.current[job.slug];
+      if (job.remoteId) {
+        return sbFetch("coin_unlocks?id=eq." + encodeURIComponent(job.remoteId), {
+          method: "PATCH",
+          headers: sbHeaders({
+            "Prefer": "return=minimal"
+          }),
+          body: JSON.stringify({
+            used: true
+          })
+        });
+      }
+      if (!_kidId2) return Promise.resolve(null);
+      return sbFetch("coin_unlocks?kid_id=eq." + encodeURIComponent(_kidId2) + "&unlock_id=eq." + encodeURIComponent(job.unlockId), {
+        method: "PATCH",
+        headers: sbHeaders({
+          "Prefer": "return=minimal"
+        }),
+        body: JSON.stringify({
+          used: true
+        })
+      });
+    }
+    if (job.kind === "unlockDeleteAll") {
+      if (!job.kidIds || !job.kidIds.length) return Promise.resolve(null);
+      return sbFetch("coin_unlocks?kid_id=in.(" + job.kidIds.join(",") + ")", {
+        method: "DELETE",
+        headers: sbHeaders({
+          "Prefer": "return=minimal"
+        })
+      });
+    }
     return Promise.resolve();
   }
   function enqueueSync(job) {
     if (!supabaseReady()) return Promise.resolve(null);
-    if (!syncReadyRef.current || job.slug && !kidIdsRef.current[job.slug] && job.kind !== "delete") {
+    if (!syncReadyRef.current || job.slug && !kidIdsRef.current[job.slug] && job.kind !== "delete" && job.kind !== "unlockDeleteAll") {
       pendingSyncRef.current.push(job);
       return Promise.resolve(null);
     }
@@ -798,99 +1293,230 @@ function App() {
       });
     }, Promise.resolve());
   }
-  function syncBalance(slug, balance) {
+  function syncBalance(slug, balance, boostOverride) {
     return enqueueSync({
       kind: "balance",
       slug: slug,
-      balance: balance
+      balance: balance,
+      boosts: boostOverride || boostsRef.current && boostsRef.current[slug] || defaultBoost()
     });
   }
-  function syncInsertTx(slug, entryType, amount, desc, tempId) {
+  function syncInsertTx(slug, entryType, amount, desc, tempId, source) {
     return enqueueSync({
       kind: "insert",
       slug: slug,
       entryType: entryType,
       amount: amount,
       desc: desc,
-      tempId: tempId
+      tempId: tempId,
+      source: source || null
     });
+  }
+  function applyUnlocks(slug, nextLog, nextCoins) {
+    var owned = {};
+    (unlocksRef.current[slug] || []).forEach(function (u) {
+      owned[u.id] = true;
+    });
+    var fresh = findNewUnlocks(slug, nextLog, nextCoins, owned);
+    if (!fresh.length) return;
+    var nextUnlocks = Object.assign({}, unlocksRef.current);
+    nextUnlocks[slug] = (nextUnlocks[slug] || []).concat(fresh);
+    unlocksRef.current = nextUnlocks;
+    setUnlocks(nextUnlocks);
+    fresh.forEach(function (u) {
+      enqueueSync({
+        kind: "unlockInsert",
+        slug: slug,
+        unlockId: u.id,
+        unlockType: u.type,
+        used: false,
+        at: u.at
+      });
+    });
+    setUnlockQueue(function (q) {
+      return q.concat(fresh.map(function (u) {
+        return Object.assign({}, u, {
+          slug: slug
+        });
+      }));
+    });
+    try {
+      tune.fanfare();
+    } catch (e) {}
+    setModal("unlock");
   }
   var weekend = useMemo(function () {
     var d = new Date().getDay();
     return d === 0 || d === 6;
   }, []);
   var K = KIDS[kid];
+  var celebrating = unlockQueue[0] || null;
+  var celebrateMeta = celebrating ? REWARD_BY_ID[celebrating.id] : null;
   var flash = function flash(msg) {
     setToast(msg);
     setTimeout(function () {
       setToast(null);
     }, 1700);
   };
-  var earn = function earn(amount, desc) {
+  var dismissUnlock = function dismissUnlock() {
+    setUnlockQueue(function (q) {
+      var rest = q.slice(1);
+      if (!rest.length) setModal(null);
+      return rest;
+    });
+  };
+  var earn = function earn(amount, desc, source, opts) {
+    opts = opts || {};
+    var slug = opts.slug || kid;
+    var skipUnlockCheck = !!opts.skipUnlockCheck;
+    var award = amount;
+    var doubled = false;
+    var nextBoosts = Object.assign({}, boostsRef.current);
+    var kidBoost = Object.assign({}, nextBoosts[slug] || defaultBoost());
+    if (!opts.skipDouble && kidBoost.doubleEarnsLeft > 0) {
+      award = amount * 2;
+      kidBoost.doubleEarnsLeft -= 1;
+      nextBoosts[slug] = kidBoost;
+      boostsRef.current = nextBoosts;
+      setBoosts(nextBoosts);
+      doubled = true;
+    }
     var when = new Date().toLocaleString("en-GB");
-    var tempId = "local-" + Date.now();
+    var tempId = "local-" + Date.now() + "-" + Math.floor(Math.random() * 999);
     var entry = {
       id: tempId,
       type: "earned",
-      amount: amount,
+      amount: award,
       desc: desc,
-      when: when
+      when: when,
+      source: source || null
     };
     var newBal = 0;
-    setCoins(function (c) {
-      var next = Object.assign({}, c);
-      newBal = (c[kid] || 0) + amount;
-      next[kid] = newBal;
-      coinsRef.current = next;
-      return next;
-    });
-    setLog(function (l) {
-      var next = Object.assign({}, l);
-      next[kid] = [entry].concat(l[kid] || []);
-      logRef.current = next;
-      return next;
-    });
-    flash("+" + amount + " for " + K.name + "!");
-    Promise.all([syncInsertTx(kid, "earned", amount, desc, tempId), syncBalance(kid, newBal)]).then(function () {
+    var nextCoins = Object.assign({}, coinsRef.current);
+    newBal = (nextCoins[slug] || 0) + award;
+    nextCoins[slug] = newBal;
+    coinsRef.current = nextCoins;
+    setCoins(nextCoins);
+    var nextLog = Object.assign({}, logRef.current);
+    nextLog[slug] = [entry].concat(nextLog[slug] || []);
+    logRef.current = nextLog;
+    setLog(nextLog);
+    if (doubled) flash("2× power-up! +" + award + " for " + KIDS[slug].name + "!");else flash("+" + award + " for " + KIDS[slug].name + "!");
+    Promise.all([syncInsertTx(slug, "earned", award, desc, tempId, source), syncBalance(slug, newBal, kidBoost)]).then(function () {
       setCloud("online");
     }).catch(function () {
       setCloud("offline");
     });
+    if (!skipUnlockCheck) applyUnlocks(slug, nextLog, nextCoins);
   };
-  var spend = function spend(amount, desc) {
-    if ((coinsRef.current[kid] || 0) < amount) {
+  var spend = function spend(amount, desc, source, opts) {
+    opts = opts || {};
+    var slug = opts.slug || kid;
+    var cost = amount;
+    var usedFree = false;
+    var nextBoosts = Object.assign({}, boostsRef.current);
+    var kidBoost = Object.assign({}, nextBoosts[slug] || defaultBoost());
+    if (source === "switch15" && kidBoost.freeSwitch && !opts.forcePaid) {
+      cost = 0;
+      usedFree = true;
+      kidBoost.freeSwitch = false;
+      nextBoosts[slug] = kidBoost;
+      boostsRef.current = nextBoosts;
+      setBoosts(nextBoosts);
+    }
+    if ((coinsRef.current[slug] || 0) < cost) {
       flash("Not enough coins!");
       return;
     }
     var when = new Date().toLocaleString("en-GB");
-    var tempId = "local-" + Date.now();
+    var tempId = "local-" + Date.now() + "-" + Math.floor(Math.random() * 999);
     var entry = {
       id: tempId,
       type: "spent",
-      amount: amount,
-      desc: desc,
-      when: when
+      amount: cost,
+      desc: usedFree ? desc + " (Free Pass)" : desc,
+      when: when,
+      source: source || null
     };
     var newBal = 0;
-    setCoins(function (c) {
-      var next = Object.assign({}, c);
-      newBal = (c[kid] || 0) - amount;
-      next[kid] = newBal;
-      coinsRef.current = next;
-      return next;
-    });
-    setLog(function (l) {
-      var next = Object.assign({}, l);
-      next[kid] = [entry].concat(l[kid] || []);
-      logRef.current = next;
-      return next;
-    });
-    flash("−" + amount + " · " + desc);
-    Promise.all([syncInsertTx(kid, "spent", amount, desc, tempId), syncBalance(kid, newBal)]).then(function () {
+    var nextCoins = Object.assign({}, coinsRef.current);
+    newBal = (nextCoins[slug] || 0) - cost;
+    nextCoins[slug] = newBal;
+    coinsRef.current = nextCoins;
+    setCoins(nextCoins);
+    var nextLog = Object.assign({}, logRef.current);
+    nextLog[slug] = [entry].concat(nextLog[slug] || []);
+    logRef.current = nextLog;
+    setLog(nextLog);
+    flash(usedFree ? "Free Switch Pass used!" : "−" + cost + " · " + desc);
+    Promise.all([syncInsertTx(slug, "spent", cost, entry.desc, tempId, source), syncBalance(slug, newBal, kidBoost)]).then(function () {
       setCloud("online");
     }).catch(function () {
       setCloud("offline");
     });
+    applyUnlocks(slug, nextLog, nextCoins);
+  };
+  var markPowerupUsed = function markPowerupUsed(slug, unlockId) {
+    var nextUnlocks = Object.assign({}, unlocksRef.current);
+    var remoteId = null;
+    nextUnlocks[slug] = (nextUnlocks[slug] || []).map(function (u) {
+      if (u.id !== unlockId) return u;
+      remoteId = u.remoteId || null;
+      return Object.assign({}, u, {
+        used: true
+      });
+    });
+    unlocksRef.current = nextUnlocks;
+    setUnlocks(nextUnlocks);
+    enqueueSync({
+      kind: "unlockUsed",
+      slug: slug,
+      unlockId: unlockId,
+      remoteId: remoteId
+    });
+  };
+  var usePowerup = function usePowerup(unlockId) {
+    var slug = kid;
+    var owned = (unlocksRef.current[slug] || []).filter(function (u) {
+      return u.id === unlockId && u.type === "powerup" && !u.used;
+    })[0];
+    if (!owned) {
+      flash("Already used!");
+      return;
+    }
+    var meta = REWARD_BY_ID[unlockId];
+    if (!meta) return;
+    if (meta.effect === "double") {
+      var nextBoosts = Object.assign({}, boostsRef.current);
+      var _kidBoost = Object.assign({}, nextBoosts[slug] || defaultBoost());
+      _kidBoost.doubleEarnsLeft = (_kidBoost.doubleEarnsLeft || 0) + 3;
+      nextBoosts[slug] = _kidBoost;
+      boostsRef.current = nextBoosts;
+      setBoosts(nextBoosts);
+      markPowerupUsed(slug, unlockId);
+      syncBalance(slug, coinsRef.current[slug] || 0, _kidBoost);
+      flash("Double Coin Burst armed!");
+      return;
+    }
+    if (meta.effect === "freeSwitch") {
+      var _nextBoosts = Object.assign({}, boostsRef.current);
+      var _kidBoost2 = Object.assign({}, _nextBoosts[slug] || defaultBoost());
+      _kidBoost2.freeSwitch = true;
+      _nextBoosts[slug] = _kidBoost2;
+      boostsRef.current = _nextBoosts;
+      setBoosts(_nextBoosts);
+      markPowerupUsed(slug, unlockId);
+      syncBalance(slug, coinsRef.current[slug] || 0, _kidBoost2);
+      flash("Free Switch Pass ready!");
+      return;
+    }
+    if (meta.effect === "coinDrop") {
+      markPowerupUsed(slug, unlockId);
+      earn(5, "Coin Drop power-up", "powerup-coin-boost", {
+        skipDouble: true
+      });
+      return;
+    }
   };
   var undoLast = function undoLast() {
     var entry = (logRef.current[kid] || [])[0] || log[kid][0];
@@ -934,6 +1560,13 @@ function App() {
       ben: 0
     });
     setLog(emptyLog());
+    var clearedUnlocks = emptyUnlocks();
+    var clearedBoosts = emptyBoosts();
+    unlocksRef.current = clearedUnlocks;
+    boostsRef.current = clearedBoosts;
+    setUnlocks(clearedUnlocks);
+    setBoosts(clearedBoosts);
+    setUnlockQueue([]);
     flash("All kids reset to 0");
     setModal(null);
     if (!supabaseReady()) return;
@@ -942,7 +1575,7 @@ function App() {
       return ids[s];
     }).filter(Boolean);
     var tasks = Object.keys(KIDS).map(function (slug) {
-      return syncBalance(slug, 0);
+      return syncBalance(slug, 0, defaultBoost());
     });
     if (idList.length) {
       tasks.push(sbFetch("coin_transactions?kid_id=in.(" + idList.join(",") + ")", {
@@ -950,6 +1583,10 @@ function App() {
         headers: sbHeaders({
           "Prefer": "return=minimal"
         })
+      }));
+      tasks.push(enqueueSync({
+        kind: "unlockDeleteAll",
+        kidIds: idList
       }));
     }
     Promise.all(tasks).then(function () {
@@ -980,7 +1617,8 @@ function App() {
       tune.stop();
       tune.fanfare();
       setDone(true);
-      earn(timerJob ? timerJob.coins : 1, timerJob ? timerJob.name + " (" + timerJob.sub + ")" : "Brush teeth");
+      var job = timerJob;
+      earn(job ? job.coins : 1, job ? job.name + (job.sub ? " (" + job.sub + ")" : "") : "Brush teeth", job ? job.id : "brush-am");
       return;
     }
     var t = setTimeout(function () {
@@ -1054,7 +1692,7 @@ function App() {
       }
       ctx.restore();
     };
-    var _loop2 = function loop() {
+    var _loop3 = function loop() {
       ctx.clearRect(0, 0, W, H);
       if (frame % 3 === 0 && parts.length < target) parts.push(make());
       parts.forEach(function (p) {
@@ -1092,9 +1730,9 @@ function App() {
         draw(p);
       });
       frame++;
-      raf = requestAnimationFrame(_loop2);
+      raf = requestAnimationFrame(_loop3);
     };
-    _loop2();
+    _loop3();
     return function () {
       cancelAnimationFrame(raf);
       window.removeEventListener("deviceorientation", onOrient, true);
@@ -1109,16 +1747,41 @@ function App() {
       }
     } catch (e) {}
   };
+  var onHeroTap = function onHeroTap(key) {
+    if (kid === key) {
+      setModal("profile");
+      return;
+    }
+    setKid(key);
+  };
   var mmss = function mmss(s) {
     return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   };
   var pct = 1 - secs / 120;
+  var profileStats = kidStats(kid, log, coins);
+  var kidUnlocks = unlocks[kid] || [];
+  var unlockedIds = {};
+  kidUnlocks.forEach(function (u) {
+    unlockedIds[u.id] = u;
+  });
+  var trophyOwned = TROPHIES.filter(function (t) {
+    return unlockedIds[t.id];
+  });
+  var lockedTrophySlots = Math.max(0, TROPHIES.length - trophyOwned.length);
+  var powerOwned = POWERUPS.map(function (p) {
+    var u = unlockedIds[p.id];
+    return u ? Object.assign({}, p, {
+      used: !!u.used,
+      at: u.at
+    }) : null;
+  }).filter(Boolean);
+  var kidBoost = boosts[kid] || defaultBoost();
+  var freeSwitchReady = !!kidBoost.freeSwitch;
 
   /* ---------- row renderers ---------- */
   var JobRow = function JobRow(_ref3) {
     var job = _ref3.job,
-      tone = _ref3.tone,
-      group = _ref3.group;
+      tone = _ref3.tone;
     return /*#__PURE__*/React.createElement("div", {
       className: "row"
     }, /*#__PURE__*/React.createElement(Slot, {
@@ -1143,18 +1806,19 @@ function App() {
       value: job.coins,
       tone: tone,
       onClick: function onClick() {
-        return earn(job.coins, job.name + (job.sub ? " (" + job.sub + ")" : ""));
+        return earn(job.coins, job.name + (job.sub ? " (" + job.sub + ")" : ""), job.id);
       }
     }));
   };
   var ShopRow = function ShopRow(_ref4) {
     var item = _ref4.item,
       tone = _ref4.tone,
-      locked = _ref4.locked,
-      section = _ref4.section;
-    var cant = coins[kid] < item.coins;
+      locked = _ref4.locked;
+    var isFreeSwitch = item.id === "switch15" && freeSwitchReady;
+    var cost = isFreeSwitch ? 0 : item.coins;
+    var cant = !isFreeSwitch && coins[kid] < item.coins;
     return /*#__PURE__*/React.createElement("div", {
-      className: "row " + (locked ? "locked " : "") + (cant ? "cant" : "")
+      className: "row " + (locked ? "locked " : "") + (cant ? "cant" : "") + (isFreeSwitch ? " free-pass" : "")
     }, /*#__PURE__*/React.createElement(Slot, {
       light: true,
       src: IMAGES.shop[item.id],
@@ -1166,12 +1830,15 @@ function App() {
       className: "rname"
     }, item.name), item.sub && /*#__PURE__*/React.createElement("div", {
       className: "rsub"
-    }, item.sub)), /*#__PURE__*/React.createElement(CoinBtn, {
-      value: item.coins,
+    }, item.sub), isFreeSwitch && /*#__PURE__*/React.createElement("div", {
+      className: "rsub free-tag"
+    }, "Free Switch Pass ready!")), /*#__PURE__*/React.createElement(CoinBtn, {
+      value: isFreeSwitch ? 0 : item.coins,
+      word: isFreeSwitch ? "FREE" : undefined,
       tone: tone,
       disabled: locked || cant,
       onClick: function onClick() {
-        return spend(item.coins, item.name);
+        return spend(cost, item.name, item.id);
       }
     }));
   };
@@ -1216,7 +1883,7 @@ function App() {
       key: key,
       className: "hero-card " + k.cls + (kid === key ? " active" : ""),
       onClick: function onClick() {
-        return setKid(key);
+        return onHeroTap(key);
       }
     }, /*#__PURE__*/React.createElement(Slot, {
       src: IMAGES[k.img],
@@ -1226,7 +1893,9 @@ function App() {
       className: "comic hname"
     }, k.name, " ", k.badge), /*#__PURE__*/React.createElement("div", {
       className: "hbal"
-    }, "🪙 ", coins[key]));
+    }, "🪙 ", coins[key]), kid === key && /*#__PURE__*/React.createElement("div", {
+      className: "hprofile-hint"
+    }, "Tap again for profile"));
   })), /*#__PURE__*/React.createElement("div", {
     className: "vault",
     onClick: openVault
@@ -1243,7 +1912,13 @@ function App() {
     className: "lbl"
   }, K.name, "'s coin bank"), /*#__PURE__*/React.createElement("div", {
     className: "comic big"
-  }, coins[kid])), /*#__PURE__*/React.createElement("div", {
+  }, coins[kid]), (kidBoost.doubleEarnsLeft > 0 || kidBoost.freeSwitch) && /*#__PURE__*/React.createElement("div", {
+    className: "boost-pills"
+  }, kidBoost.doubleEarnsLeft > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "boost-pill"
+  }, "⚡ 2× ×", kidBoost.doubleEarnsLeft), kidBoost.freeSwitch && /*#__PURE__*/React.createElement("span", {
+    className: "boost-pill"
+  }, "🎮 Free Switch"))), /*#__PURE__*/React.createElement("div", {
     className: "tap"
   }, "Tap the lid", /*#__PURE__*/React.createElement("br", null), "to tip them out ⤵")), /*#__PURE__*/React.createElement("div", {
     className: "cols"
@@ -1323,7 +1998,7 @@ function App() {
     value: 2,
     word: "PER REQ",
     onClick: function onClick() {
-      return spend(2, "Mum's Food Tax");
+      return spend(2, "Mum's Food Tax", "tax");
     },
     disabled: coins[kid] < 2
   })), /*#__PURE__*/React.createElement("div", {
@@ -1347,7 +2022,7 @@ function App() {
     return /*#__PURE__*/React.createElement("div", {
       key: key,
       onClick: function onClick() {
-        return setKid(key);
+        return onHeroTap(key);
       },
       style: {
         cursor: "pointer"
@@ -1381,14 +2056,19 @@ function App() {
   }, "3"), /*#__PURE__*/React.createElement("span", null, "Spend now or save up for something bigger — your choice!")), /*#__PURE__*/React.createElement("button", {
     className: "btn tax",
     onClick: function onClick() {
-      return spend(2, "Mum's Food Tax");
+      return spend(2, "Mum's Food Tax", "tax");
     }
   }, "🍽️ Mum's Food Tax −2"), /*#__PURE__*/React.createElement("button", {
     className: "btn hist",
     onClick: function onClick() {
       return setModal("history");
     }
-  }, "📋 ", K.name, "'s History"))), /*#__PURE__*/React.createElement("div", {
+  }, "📋 ", K.name, "'s History"), /*#__PURE__*/React.createElement("button", {
+    className: "btn profile",
+    onClick: function onClick() {
+      return setModal("profile");
+    }
+  }, "🏅 ", K.name, "'s Profile"))), /*#__PURE__*/React.createElement("div", {
     className: "footer-strip comic"
   }, "★ Be a hero. Make good choices. Reach your goals! ★"), modal === "vault" && /*#__PURE__*/React.createElement("div", {
     className: "modal",
@@ -1559,7 +2239,152 @@ function App() {
     onClick: function onClick() {
       return setModal(null);
     }
-  }, "Close")))), modal === "settings" && /*#__PURE__*/React.createElement("div", {
+  }, "Close")))), modal === "profile" && /*#__PURE__*/React.createElement("div", {
+    className: "modal",
+    onClick: function onClick() {
+      return setModal(null);
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet profile-sheet",
+    onClick: function onClick(e) {
+      return e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-head",
+    style: {
+      background: K.colour
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic outline-2"
+  }, "🏅 ", K.name, "'s Profile")), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "profile-hero"
+  }, /*#__PURE__*/React.createElement(Slot, {
+    src: IMAGES[K.img],
+    label: K.name,
+    className: "profile-portrait"
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "comic profile-name"
+  }, K.name, " ", K.badge), /*#__PURE__*/React.createElement("div", {
+    className: "profile-bal"
+  }, "🪙 ", coins[kid], " coins"))), /*#__PURE__*/React.createElement("div", {
+    className: "stats-strip"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "stat"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "stat-n"
+  }, profileStats.earned), /*#__PURE__*/React.createElement("div", {
+    className: "stat-l"
+  }, "Earned")), /*#__PURE__*/React.createElement("div", {
+    className: "stat"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "stat-n"
+  }, profileStats.spent), /*#__PURE__*/React.createElement("div", {
+    className: "stat-l"
+  }, "Spent")), /*#__PURE__*/React.createElement("div", {
+    className: "stat"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "stat-n"
+  }, profileStats.jobsDone), /*#__PURE__*/React.createElement("div", {
+    className: "stat-l"
+  }, "Jobs")), /*#__PURE__*/React.createElement("div", {
+    className: "stat"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "stat-n"
+  }, trophyOwned.length), /*#__PURE__*/React.createElement("div", {
+    className: "stat-l"
+  }, "Trophies"))), /*#__PURE__*/React.createElement("div", {
+    className: "band gold comic"
+  }, "★ Trophies ★"), /*#__PURE__*/React.createElement("div", {
+    className: "trophy-grid"
+  }, trophyOwned.map(function (t) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: t.id,
+      className: "trophy-tile earned"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "trophy-ico"
+    }, t.icon), /*#__PURE__*/React.createElement("div", {
+      className: "trophy-name"
+    }, t.name));
+  }), function () {
+    var slots = [];
+    for (var i = 0; i < lockedTrophySlots; i++) {
+      slots.push(/*#__PURE__*/React.createElement("div", {
+        key: "locked-" + i,
+        className: "trophy-tile locked"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "trophy-ico"
+      }, "❓"), /*#__PURE__*/React.createElement("div", {
+        className: "trophy-name"
+      }, "???")));
+    }
+    return slots;
+  }(), trophyOwned.length === 0 && lockedTrophySlots === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "empty-note"
+  }, "Keep being a hero — surprises await!")), /*#__PURE__*/React.createElement("div", {
+    className: "band purple comic"
+  }, "★ Power-ups ★"), /*#__PURE__*/React.createElement("div", {
+    className: "power-list"
+  }, powerOwned.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "empty-note"
+  }, "No power-ups yet — keep earning!"), powerOwned.map(function (p) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: p.id,
+      className: "power-row " + (p.used ? "used" : "")
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "power-ico"
+    }, p.icon), /*#__PURE__*/React.createElement("div", {
+      className: "power-text"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "power-name"
+    }, p.name), /*#__PURE__*/React.createElement("div", {
+      className: "power-blurb"
+    }, p.blurb)), p.used ? /*#__PURE__*/React.createElement("span", {
+      className: "used-badge"
+    }, "Used") : /*#__PURE__*/React.createElement("button", {
+      className: "btn use-btn",
+      type: "button",
+      onClick: function onClick() {
+        return usePowerup(p.id);
+      }
+    }, "Use"));
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn hist",
+    onClick: function onClick() {
+      return setModal("history");
+    }
+  }, "📋 View History"), /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    onClick: function onClick() {
+      return setModal(null);
+    }
+  }, "Close")))), modal === "unlock" && celebrating && celebrateMeta && /*#__PURE__*/React.createElement("div", {
+    className: "modal unlock-modal"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet unlock-sheet",
+    onClick: function onClick(e) {
+      return e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-head",
+    style: {
+      background: KIDS[celebrating.slug || kid].colour
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic outline-2"
+  }, celebrateMeta.type === "powerup" ? "⚡ Power-up!" : "🏆 Trophy!")), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-body unlock-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "unlock-burst"
+  }, celebrateMeta.icon), /*#__PURE__*/React.createElement("div", {
+    className: "comic unlock-title pop"
+  }, celebrateMeta.name), /*#__PURE__*/React.createElement("div", {
+    className: "unlock-sub"
+  }, "Amazing work, ", KIDS[celebrating.slug || kid].name, "!", celebrateMeta.type === "powerup" ? " A power-up is waiting on your profile." : " It's yours forever — check your profile!"), /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    onClick: dismissUnlock
+  }, unlockQueue.length > 1 ? "Next surprise!" : "Awesome!")))), modal === "settings" && /*#__PURE__*/React.createElement("div", {
     className: "modal",
     onClick: function onClick() {
       return setModal(null);
@@ -1587,7 +2412,9 @@ function App() {
     style: {
       marginTop: "8px"
     }
-  }, "Sync: ", cloud === "online" ? "☁ Shared (Supabase)" : cloud === "syncing" ? "☁ Connecting…" : cloud === "offline" ? "⚠ Offline — this device only" : "📱 This device only"), /*#__PURE__*/React.createElement("button", {
+  }, "Sync: ", cloud === "online" ? "☁ Shared (Supabase)" : cloud === "syncing" ? "☁ Connecting…" : cloud === "offline" ? "⚠ Offline — this device only" : "📱 This device only"), /*#__PURE__*/React.createElement("div", {
+    className: "settings-note"
+  }, "Unlocks: ", (unlocks[kid] || []).length, " · Boosts: 2×", kidBoost.doubleEarnsLeft, kidBoost.freeSwitch ? " · Free Switch" : ""), /*#__PURE__*/React.createElement("button", {
     className: "btn undo",
     onClick: undoLast,
     disabled: !log[kid].length
