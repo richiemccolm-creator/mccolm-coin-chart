@@ -85,10 +85,17 @@ var IMAGES = {
     "homework": "/img/homework.png",
     "sit": "/img/sit.png",
     "dinner": "/img/dinner.png",
+    "calm-read": "/img/calm-read.png",
+    "read-words": "/img/read-words.png",
+    "bedtime": "/img/bedtime.png",
     "tidy": "/img/tidy.png",
     "cook": "/img/cook.png",
     "club": "/img/club.png",
-    "kind": "/img/kind.png"
+    "kind": "/img/kind.png",
+    "recycling": "/img/recycling.png",
+    "hoover": "/img/hoover.png",
+    "glass-tables": "/img/glass-tables.png",
+    "skirting": "/img/skirting.png"
   },
   shop: {
     "tv": "/img/tv.png",
@@ -165,6 +172,20 @@ var EVERYDAY_JOBS = [{
   name: "Eat your dinner",
   coins: 1,
   icon: "🍽️"
+}, {
+  id: "calm-read",
+  name: "Calm reading",
+  sub: "At bedtime",
+  coins: 2
+}, {
+  id: "read-words",
+  name: "Reading words",
+  sub: "At bedtime",
+  coins: 2
+}, {
+  id: "bedtime",
+  name: "Going to bed on time",
+  coins: 2
 }];
 var BONUS_JOBS = [{
   id: "tidy",
@@ -181,6 +202,23 @@ var BONUS_JOBS = [{
 }, {
   id: "kind",
   name: "Be kind & helpful",
+  coins: 2
+}, {
+  id: "recycling",
+  name: "Taking the recycling out",
+  coins: 2
+}, {
+  id: "hoover",
+  name: "Hoovering properly",
+  coins: 3
+}, {
+  id: "glass-tables",
+  name: "Cleaning glass tables",
+  sub: "Properly",
+  coins: 2
+}, {
+  id: "skirting",
+  name: "Cleaning skirting",
   coins: 2
 }];
 var EVERYDAY_SHOP = [{
@@ -383,10 +421,17 @@ var DESC_SOURCE = {
   "Homework, no fuss": "homework",
   "Sit nicely at the table": "sit",
   "Eat your dinner": "dinner",
+  "Calm reading (At bedtime)": "calm-read",
+  "Reading words (At bedtime)": "read-words",
+  "Going to bed on time": "bedtime",
   "Tidy your room": "tidy",
   "Help cook or set the table": "cook",
   "Go to a club or activity": "club",
   "Be kind & helpful": "kind",
+  "Taking the recycling out": "recycling",
+  "Hoovering properly": "hoover",
+  "Cleaning glass tables (Properly)": "glass-tables",
+  "Cleaning skirting": "skirting",
   "Breakfast TV": "tv",
   "Screen Time": "screentime",
   "Choose a special snack": "snack",
@@ -408,10 +453,17 @@ var JOB_SOURCES = {
   "homework": 1,
   "sit": 1,
   "dinner": 1,
+  "calm-read": 1,
+  "read-words": 1,
+  "bedtime": 1,
   "tidy": 1,
   "cook": 1,
   "club": 1,
-  "kind": 1
+  "kind": 1,
+  "recycling": 1,
+  "hoover": 1,
+  "glass-tables": 1,
+  "skirting": 1
 };
 
 /* ---------- image placeholder component ---------- */

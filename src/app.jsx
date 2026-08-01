@@ -74,10 +74,17 @@ const IMAGES = {
     "homework":"/img/homework.png",
     "sit":"/img/sit.png",
     "dinner":"/img/dinner.png",
+    "calm-read":"/img/calm-read.png",
+    "read-words":"/img/read-words.png",
+    "bedtime":"/img/bedtime.png",
     "tidy":"/img/tidy.png",
     "cook":"/img/cook.png",
     "club":"/img/club.png",
-    "kind":"/img/kind.png"
+    "kind":"/img/kind.png",
+    "recycling":"/img/recycling.png",
+    "hoover":"/img/hoover.png",
+    "glass-tables":"/img/glass-tables.png",
+    "skirting":"/img/skirting.png"
   },
   shop: {
     "tv":"/img/tv.png",
@@ -110,13 +117,20 @@ const EVERYDAY_JOBS = [
   {id:"dressed",  name:"Get dressed on time",               coins:1},
   {id:"homework", name:"Homework, no fuss",                 coins:2},
   {id:"sit",      name:"Sit nicely at the table",           coins:1, icon:"🪑"},
-  {id:"dinner",   name:"Eat your dinner",                   coins:1, icon:"🍽️"}
+  {id:"dinner",   name:"Eat your dinner",                   coins:1, icon:"🍽️"},
+  {id:"calm-read",name:"Calm reading", sub:"At bedtime",   coins:2},
+  {id:"read-words",name:"Reading words", sub:"At bedtime", coins:2},
+  {id:"bedtime",  name:"Going to bed on time",              coins:2}
 ];
 const BONUS_JOBS = [
   {id:"tidy", name:"Tidy your room",           coins:3},
   {id:"cook", name:"Help cook or set the table",coins:2},
   {id:"club", name:"Go to a club or activity",  coins:3},
-  {id:"kind", name:"Be kind & helpful",         coins:2}
+  {id:"kind", name:"Be kind & helpful",         coins:2},
+  {id:"recycling", name:"Taking the recycling out", coins:2},
+  {id:"hoover", name:"Hoovering properly",       coins:3},
+  {id:"glass-tables", name:"Cleaning glass tables", sub:"Properly", coins:2},
+  {id:"skirting", name:"Cleaning skirting",      coins:2}
 ];
 const EVERYDAY_SHOP = [
   {id:"tv",         name:"Breakfast TV",      sub:"15 minutes",     coins:1},
@@ -186,10 +200,17 @@ const DESC_SOURCE = {
   "Homework, no fuss":"homework",
   "Sit nicely at the table":"sit",
   "Eat your dinner":"dinner",
+  "Calm reading (At bedtime)":"calm-read",
+  "Reading words (At bedtime)":"read-words",
+  "Going to bed on time":"bedtime",
   "Tidy your room":"tidy",
   "Help cook or set the table":"cook",
   "Go to a club or activity":"club",
   "Be kind & helpful":"kind",
+  "Taking the recycling out":"recycling",
+  "Hoovering properly":"hoover",
+  "Cleaning glass tables (Properly)":"glass-tables",
+  "Cleaning skirting":"skirting",
   "Breakfast TV":"tv",
   "Screen Time":"screentime",
   "Choose a special snack":"snack",
@@ -206,7 +227,9 @@ const DESC_SOURCE = {
 
 const JOB_SOURCES = {
   "brush-am":1,"brush-pm":1,"bed":1,"dressed":1,"homework":1,"sit":1,"dinner":1,
-  "tidy":1,"cook":1,"club":1,"kind":1
+  "calm-read":1,"read-words":1,"bedtime":1,
+  "tidy":1,"cook":1,"club":1,"kind":1,
+  "recycling":1,"hoover":1,"glass-tables":1,"skirting":1
 };
 
 /* ---------- image placeholder component ---------- */
