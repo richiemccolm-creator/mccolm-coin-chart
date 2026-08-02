@@ -450,6 +450,25 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   margin:0;padding-left:1.2rem;font-weight:800;font-size:.88rem;line-height:1.45;color:rgba(255,255,255,.95);
 }
 .coin-drop-rules-list strong{color:#ffc42e}
+.coin-drop-slide-hint{
+  margin-top:10px;display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-align:center;-webkit-align-items:center;align-items:center;
+  -webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;
+  gap:8px;font-weight:900;font-size:.9rem;color:#fff3b0;
+}
+.coin-drop-finger{
+  display:inline-block;
+  -webkit-animation:coinSlideHint 1.1s ease-in-out infinite;
+  animation:coinSlideHint 1.1s ease-in-out infinite;
+}
+@-webkit-keyframes coinSlideHint{
+  0%,100%{-webkit-transform:translateX(-6px)}
+  50%{-webkit-transform:translateX(6px)}
+}
+@keyframes coinSlideHint{
+  0%,100%{transform:translateX(-6px)}
+  50%{transform:translateX(6px)}
+}
 .coin-drop-start{margin:0 12px 8px;width:auto}
 .coin-drop-done{margin:0 12px 12px;width:auto;font-size:1.15rem}
 .coin-drop-controls{
@@ -479,13 +498,15 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   -webkit-transform:rotate(-6deg) scale(1.05);transform:rotate(-6deg) scale(1.05);
 }
 .coin-drop-result.is-side .burst-label{
-  font-size:1.45rem;background:#fff3b0;-webkit-transform:rotate(3deg);transform:rotate(3deg);
+  font-size:1.45rem;background:#e8fff0;color:#0b5c28;
+  -webkit-transform:rotate(2deg);transform:rotate(2deg);
 }
 .coin-drop-sub{
   margin-top:10px;font-weight:900;font-size:.95rem;color:#fff;
   text-shadow:0 2px 0 #000;
 }
 .coin-drop-result.is-vault .coin-drop-sub{color:#ffc42e;font-size:1.05rem}
+.coin-drop-result.is-side .coin-drop-sub{color:#c8ffd8}
 .coin-drop-boost{
   margin-top:10px;font-family:'Luckiest Guy',Impact,sans-serif;font-size:1.2rem;color:#ffc42e;
   text-shadow:0 3px 0 #000;

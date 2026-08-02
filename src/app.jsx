@@ -641,23 +641,76 @@ function cdZoneForX(x){
 }
 
 function cdZoneLabel(zone){
-  if(zone === "left") return "BAM!";
-  if(zone === "right") return "NICE SHOT!";
+  if(zone === "left") return "STILL IN!";
+  if(zone === "right") return "COIN SAVED!";
   return "SUPER DROP!";
 }
 
 function cdZoneSub(zone){
-  if(zone === "vault") return "Well done — straight into the vault!";
-  return "Better luck next time — you still keep your coin!";
+  if(zone === "vault") return "Banked in the vault — amazing!";
+  return "Your coin is safe either way!";
 }
 
 function cdZoneCheer(zone){
   if(zone === "vault") return "Well done!";
-  return "Nice try!";
+  return "Coin saved!";
 }
 
 function cdZoneIsVault(zone){
   return zone === "vault";
+}
+
+function cdThemeForKid(kid){
+  const id = kid && kid.id;
+  if(id === "sam"){
+    return {
+      top: "#ff9a3c",
+      bottom: "#4a1a00",
+      ray: "rgba(255,196,46,0.28)",
+      peg: "#ffc42e",
+      pegEdge: "#8a5300",
+      vault: "#9a3e00",
+      vaultStroke: "#ffc42e",
+      vaultText: "#fff3b0",
+      mover: "#e85d04",
+      accent: "#ffc42e",
+      badge: "⚡",
+      particleA: "#ffc42e",
+      particleB: "#fff3b0"
+    };
+  }
+  if(id === "ben"){
+    return {
+      top: "#ff5b5b",
+      bottom: "#3a0008",
+      ray: "rgba(255,140,140,0.26)",
+      peg: "#ffc42e",
+      pegEdge: "#8a5300",
+      vault: "#8b0000",
+      vaultStroke: "#ffc42e",
+      vaultText: "#ffd0d0",
+      mover: "#ff3b3b",
+      accent: "#ffc42e",
+      badge: "✊",
+      particleA: "#ffc42e",
+      particleB: "#ffb0b0"
+    };
+  }
+  return {
+    top: "#5aa9ff",
+    bottom: "#04113d",
+    ray: "rgba(180,220,255,0.28)",
+    peg: "#ffc42e",
+    pegEdge: "#8a5300",
+    vault: "#0b3d91",
+    vaultStroke: "#ffc42e",
+    vaultText: "#cfe8ff",
+    mover: "#2f7ad1",
+    accent: "#ffc42e",
+    badge: "⭐",
+    particleA: "#ffc42e",
+    particleB: "#ffffff"
+  };
 }
 
 function CoinDropGame(props){
@@ -692,6 +745,8 @@ function CoinDropGame(props){
   const pegHitCooldownRef = useRef(0);
   const awardResultRef = useRef(null);
   const reducedRef = useRef(prefersReducedMotion());
+  const themeRef = useRef(cdThemeForKid(kid));
+  const vaultFlashRef = useRef(0);
 
   const [gameStage, setGameStage] = useState("ready");
   const [tiltEnabled, setTiltEnabled] = useState(false);
@@ -704,15 +759,18 @@ function CoinDropGame(props){
   const [resultAmount, setResultAmount] = useState(null);
   const [boostFlash, setBoostFlash] = useState(false);
 
+  themeRef.current = cdThemeForKid(kid);
+
   const drawBoard = function(ctx, coin, movers, particles, bobY){
+    const theme = themeRef.current;
     const g = ctx.createLinearGradient(0, 0, 0, CD_H);
-    g.addColorStop(0, "#1a3fa0");
-    g.addColorStop(1, "#04113d");
+    g.addColorStop(0, theme.top);
+    g.addColorStop(1, theme.bottom);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, CD_W, CD_H);
 
     ctx.save();
-    ctx.globalAlpha = 0.12;
+    ctx.globalAlpha = 0.14;
     ctx.fillStyle = "#fff";
     for(var hx = 12; hx < CD_W; hx += 18){
       for(var hy = 12; hy < CD_H - 80; hy += 18){
@@ -723,7 +781,7 @@ function CoinDropGame(props){
     }
     ctx.restore();
 
-    ctx.strokeStyle = "rgba(255,196,46,0.18)";
+    ctx.strokeStyle = theme.ray;
     ctx.lineWidth = 2;
     for(var ray = -4; ray <= 4; ray++){
       ctx.beginPath();
@@ -739,11 +797,15 @@ function CoinDropGame(props){
     CD_PEGS.forEach(function(p){
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffc42e";
+      ctx.fillStyle = theme.peg;
       ctx.fill();
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#000";
       ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.x - 2, p.y - 2, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.fill();
     });
 
     CD_BUMPERS.forEach(function(b){
@@ -752,7 +814,7 @@ function CoinDropGame(props){
       ctx.lineTo(b.x2, b.y2);
       ctx.lineWidth = b.thickness;
       ctx.lineCap = "round";
-      ctx.strokeStyle = kid.colour || "#ff8c00";
+      ctx.strokeStyle = kid.colour || theme.mover;
       ctx.stroke();
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#000";
@@ -760,7 +822,7 @@ function CoinDropGame(props){
     });
 
     movers.forEach(function(m){
-      ctx.fillStyle = "#ff3b3b";
+      ctx.fillStyle = theme.mover;
       ctx.strokeStyle = "#000";
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -781,39 +843,40 @@ function CoinDropGame(props){
     });
 
     const zonesY = CD_H - 62;
-    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
     ctx.fillRect(12, zonesY, 95, 50);
     ctx.fillRect(253, zonesY, 95, 50);
-    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.strokeStyle = "rgba(255,255,255,0.28)";
     ctx.lineWidth = 2;
     ctx.strokeRect(12, zonesY, 95, 50);
     ctx.strokeRect(253, zonesY, 95, 50);
 
-    ctx.fillStyle = "#0b3d91";
-    ctx.strokeStyle = "#ffc42e";
-    ctx.lineWidth = 4;
+    const flash = vaultFlashRef.current > 0;
+    ctx.fillStyle = flash ? theme.accent : theme.vault;
+    ctx.strokeStyle = theme.vaultStroke;
+    ctx.lineWidth = flash ? 6 : 4;
     ctx.fillRect(112, zonesY - 6, 136, 56);
     ctx.strokeRect(112, zonesY - 6, 136, 56);
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 2;
     ctx.strokeRect(112, zonesY - 6, 136, 56);
 
-    ctx.fillStyle = "#ffc42e";
+    ctx.fillStyle = flash ? "#111" : theme.accent;
     ctx.font = "22px Luckiest Guy,Impact,sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("VAULT", CD_W / 2, zonesY + 20);
-    ctx.fillStyle = "#fff3b0";
+    ctx.fillText(theme.badge + " VAULT", CD_W / 2, zonesY + 20);
+    ctx.fillStyle = flash ? "#111" : theme.vaultText;
     ctx.font = "bold 11px sans-serif";
     ctx.fillText("BEST DROP", CD_W / 2, zonesY + 40);
 
-    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
     ctx.font = "bold 12px Impact,sans-serif";
-    ctx.fillText("BAM!", 59, zonesY + 22);
-    ctx.fillText("NICE!", 300, zonesY + 22);
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fillText("IN!", 59, zonesY + 22);
+    ctx.fillText("SAFE!", 300, zonesY + 22);
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.font = "bold 9px sans-serif";
-    ctx.fillText("keep coin", 59, zonesY + 38);
-    ctx.fillText("keep coin", 300, zonesY + 38);
+    ctx.fillText("coin kept", 59, zonesY + 38);
+    ctx.fillText("coin kept", 300, zonesY + 38);
 
     particles.forEach(function(pt){
       ctx.globalAlpha = Math.max(0, pt.life);
@@ -856,7 +919,7 @@ function CoinDropGame(props){
     ctx.font = "bold 16px serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("★", 0, 1);
+    ctx.fillText(theme.badge || "★", 0, 1);
     ctx.restore();
   };
 
@@ -869,6 +932,7 @@ function CoinDropGame(props){
     if(timeoutRef.current) clearTimeout(timeoutRef.current);
 
     const isVault = cdZoneIsVault(zone);
+    const theme = themeRef.current;
     setGameStage("landed");
     setResultText(cdZoneLabel(zone));
     setResultSub(cdZoneSub(zone));
@@ -876,24 +940,45 @@ function CoinDropGame(props){
     setResultVault(isVault);
     playCoinSfx(isVault ? "vault" : "side", true);
     try{
-      if(navigator.vibrate) navigator.vibrate(isVault ? [30, 40, 50] : 30);
+      if(navigator.vibrate) navigator.vibrate(isVault ? [30, 40, 50, 30] : 30);
     }catch(e){}
 
-    const burstCount = isVault ? 28 : 12;
-    const burstSpeed = isVault ? 8 : 5;
+    if(isVault) vaultFlashRef.current = 18;
+
+    const burstCount = isVault ? 36 : 14;
+    const burstSpeed = isVault ? 9 : 5;
     for(var i = 0; i < burstCount; i++){
       particlesRef.current.push({
         x: coinRef.current.x,
         y: coinRef.current.y,
         vx: (Math.random() - 0.5) * burstSpeed,
-        vy: (Math.random() - 0.5) * burstSpeed - (isVault ? 3 : 1.5),
-        r: 2 + Math.random() * (isVault ? 4 : 2.5),
+        vy: (Math.random() - 0.5) * burstSpeed - (isVault ? 3.5 : 1.5),
+        r: 2 + Math.random() * (isVault ? 4.5 : 2.5),
         life: 1,
         color: isVault
-          ? (Math.random() > 0.4 ? "#ffc42e" : "#fff")
-          : (Math.random() > 0.5 ? "#fff3b0" : "#fff")
+          ? (Math.random() > 0.45 ? theme.particleA : theme.particleB)
+          : (Math.random() > 0.5 ? theme.particleB : "#fff")
       });
     }
+
+    const celebrateTick = function(){
+      if(vaultFlashRef.current > 0) vaultFlashRef.current -= 1;
+      particlesRef.current = particlesRef.current.filter(function(pt){
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.vy += 0.12;
+        pt.life -= 0.035;
+        return pt.life > 0;
+      });
+      const canvas = canvasRef.current;
+      if(canvas){
+        drawBoard(canvas.getContext("2d"), coinRef.current, moversRef.current, particlesRef.current, null);
+      }
+      if(vaultFlashRef.current > 0 || particlesRef.current.length){
+        animationFrameRef.current = requestAnimationFrame(celebrateTick);
+      }
+    };
+    animationFrameRef.current = requestAnimationFrame(celebrateTick);
 
     Promise.resolve(awardReward(reward)).then(function(result){
       awardResultRef.current = result || null;
@@ -902,12 +987,12 @@ function CoinDropGame(props){
       setBoostFlash(!!(result && result.boostApplied));
       setTimeout(function(){
         setGameStage("complete");
-      }, isVault ? 700 : 550);
+      }, isVault ? 800 : 550);
     }).catch(function(){
       setResultAmount(reward.amount || 1);
       setTimeout(function(){
         setGameStage("complete");
-      }, isVault ? 700 : 550);
+      }, isVault ? 800 : 550);
     });
   };
 
@@ -1199,21 +1284,22 @@ function CoinDropGame(props){
   };
 
   const steerHint = tiltUnavailable || !tiltAllowedSetting
-    ? "Drag the board or tap ◀ ▶ to steer"
-    : "Tilt the phone, or use drag / ◀ ▶";
+    ? "Slide on the board to steer — or tap ◀ ▶"
+    : "Slide on the board to steer — tilt works too";
 
   const isPractice = !!(reward && reward.source === "test-drop");
   const showResult = gameStage === "landed" || gameStage === "complete";
+  const theme = cdThemeForKid(kid);
 
-  let headTitle = "You earned a coin!";
+  let headTitle = "Bank your coin!";
   if(reward && reward.source === "powerup-extra-drop") headTitle = "Bonus Drop!";
   else if(isPractice) headTitle = "Test Drop!";
   if(showResult && resultCheer) headTitle = resultCheer;
 
   const instruct = gameStage === "ready"
-    ? "Aim for the VAULT — you keep your coin either way"
+    ? "Slide to steer — aim for the vault"
     : gameStage === "complete"
-      ? (resultVault ? "Tap Done when you're ready" : "You still keep your coin — tap Done")
+      ? (resultVault ? "Tap Done when you're ready" : "Coin kept — tap Done")
       : steerHint;
 
   return (
@@ -1223,7 +1309,7 @@ function CoinDropGame(props){
           <h2 className="comic">{headTitle}</h2>
           <p className="coin-drop-instructions">{instruct}</p>
           {(tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && (
-            <p className="coin-drop-toast">Tilt unavailable · Drag or use the arrows</p>
+            <p className="coin-drop-toast">Tilt unavailable · Slide or use the arrows</p>
           )}
         </div>
 
@@ -1240,16 +1326,20 @@ function CoinDropGame(props){
             width={CD_W}
             height={CD_H}
             role="img"
-            aria-label="Coin drop game. Guide the coin into the vault. You keep your coin either way."
+            aria-label="Coin drop game. Slide to steer into the vault. You keep your coin either way."
           />
           {gameStage === "ready" && (
-            <div className="coin-drop-rules" aria-live="polite">
-              <p className="coin-drop-rules-title">How to play</p>
+            <div className="coin-drop-rules" aria-live="polite" style={{borderColor: theme.accent}}>
+              <p className="coin-drop-rules-title" style={{color: theme.accent}}>How to play</p>
               <ol className="coin-drop-rules-list">
-                <li>Steer with tilt, drag, or the arrows</li>
-                <li>Aim for the gold <strong>VAULT</strong> in the middle</li>
-                <li>Sides still count — you always keep your coin</li>
+                <li><strong>Slide</strong> left or right on the board to steer</li>
+                <li>Aim for {kid.name}'s gold <strong>VAULT</strong> in the middle</li>
+                <li>Sides say <strong>IN / SAFE</strong> — you always keep your coin</li>
               </ol>
+              <div className="coin-drop-slide-hint" aria-hidden="true">
+                <span className="coin-drop-finger">👈👉</span>
+                <span>Slide to steer</span>
+              </div>
             </div>
           )}
           {showResult ? (
