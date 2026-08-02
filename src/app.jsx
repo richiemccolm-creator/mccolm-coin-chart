@@ -399,17 +399,27 @@ function playCoinSfx(kind, enabled){
       g.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
       o.connect(g); g.connect(ctx.destination); o.start(now); o.stop(now + 0.1);
     }else if(kind === "vault"){
-      [660, 880, 1046].forEach(function(f, i){
+      [660, 880, 1046, 1318].forEach(function(f, i){
         const o = ctx.createOscillator(); const g = ctx.createGain();
         o.type = "sine"; o.frequency.value = f;
-        const t = now + i * 0.07;
+        const t = now + i * 0.08;
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-        o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.25);
+        g.gain.exponentialRampToValueAtTime(0.14, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+        o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.3);
+      });
+    }else if(kind === "side"){
+      [520, 660].forEach(function(f, i){
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.type = "triangle"; o.frequency.value = f;
+        const t = now + i * 0.09;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.09, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.22);
       });
     }
-    setTimeout(function(){ try{ ctx.close(); }catch(e){} }, 800);
+    setTimeout(function(){ try{ ctx.close(); }catch(e){} }, 900);
   }catch(e){}
 }
 
@@ -636,6 +646,15 @@ function cdZoneLabel(zone){
   return "SUPER DROP!";
 }
 
+function cdZoneSub(zone){
+  if(zone === "vault") return "Straight into the vault!";
+  return "Still got your coin!";
+}
+
+function cdZoneIsVault(zone){
+  return zone === "vault";
+}
+
 function CoinDropGame(props){
   const kid = props.kid;
   const reward = props.reward;
@@ -674,6 +693,8 @@ function CoinDropGame(props){
   const tiltEnabledRef = useRef(false);
   const [tiltUnavailable, setTiltUnavailable] = useState(false);
   const [resultText, setResultText] = useState(null);
+  const [resultSub, setResultSub] = useState(null);
+  const [resultVault, setResultVault] = useState(false);
   const [resultAmount, setResultAmount] = useState(null);
   const [boostFlash, setBoostFlash] = useState(false);
 
@@ -754,22 +775,39 @@ function CoinDropGame(props){
     });
 
     const zonesY = CD_H - 62;
-    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
     ctx.fillRect(12, zonesY, 95, 50);
     ctx.fillRect(253, zonesY, 95, 50);
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(12, zonesY, 95, 50);
+    ctx.strokeRect(253, zonesY, 95, 50);
+
     ctx.fillStyle = "#0b3d91";
-    ctx.strokeStyle = "#000";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#ffc42e";
+    ctx.lineWidth = 4;
     ctx.fillRect(112, zonesY - 6, 136, 56);
     ctx.strokeRect(112, zonesY - 6, 136, 56);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(112, zonesY - 6, 136, 56);
+
     ctx.fillStyle = "#ffc42e";
     ctx.font = "22px Luckiest Guy,Impact,sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("VAULT", CD_W / 2, zonesY + 28);
-    ctx.fillStyle = "rgba(255,255,255,0.55)";
-    ctx.font = "bold 10px sans-serif";
-    ctx.fillText("BAM!", 59, zonesY + 28);
-    ctx.fillText("NICE!", 300, zonesY + 28);
+    ctx.fillText("VAULT", CD_W / 2, zonesY + 20);
+    ctx.fillStyle = "#fff3b0";
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText("BEST DROP", CD_W / 2, zonesY + 40);
+
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = "bold 12px Impact,sans-serif";
+    ctx.fillText("BAM!", 59, zonesY + 22);
+    ctx.fillText("NICE!", 300, zonesY + 22);
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = "bold 9px sans-serif";
+    ctx.fillText("keep coin", 59, zonesY + 38);
+    ctx.fillText("keep coin", 300, zonesY + 38);
 
     particles.forEach(function(pt){
       ctx.globalAlpha = Math.max(0, pt.life);
@@ -824,20 +862,29 @@ function CoinDropGame(props){
     if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     if(timeoutRef.current) clearTimeout(timeoutRef.current);
 
+    const isVault = cdZoneIsVault(zone);
     setGameStage("landed");
     setResultText(cdZoneLabel(zone));
-    playCoinSfx("vault", true);
-    try{ if(navigator.vibrate) navigator.vibrate(40); }catch(e){}
+    setResultSub(cdZoneSub(zone));
+    setResultVault(isVault);
+    playCoinSfx(isVault ? "vault" : "side", true);
+    try{
+      if(navigator.vibrate) navigator.vibrate(isVault ? [30, 40, 50] : 30);
+    }catch(e){}
 
-    for(var i = 0; i < 18; i++){
+    const burstCount = isVault ? 28 : 12;
+    const burstSpeed = isVault ? 8 : 5;
+    for(var i = 0; i < burstCount; i++){
       particlesRef.current.push({
         x: coinRef.current.x,
         y: coinRef.current.y,
-        vx: (Math.random() - 0.5) * 6,
-        vy: (Math.random() - 0.5) * 6 - 2,
-        r: 2 + Math.random() * 3,
+        vx: (Math.random() - 0.5) * burstSpeed,
+        vy: (Math.random() - 0.5) * burstSpeed - (isVault ? 3 : 1.5),
+        r: 2 + Math.random() * (isVault ? 4 : 2.5),
         life: 1,
-        color: Math.random() > 0.5 ? "#ffc42e" : "#fff"
+        color: isVault
+          ? (Math.random() > 0.4 ? "#ffc42e" : "#fff")
+          : (Math.random() > 0.5 ? "#fff3b0" : "#fff")
       });
     }
 
@@ -849,13 +896,13 @@ function CoinDropGame(props){
       setTimeout(function(){
         setGameStage("complete");
         onComplete(zone, result || null);
-      }, 900);
+      }, isVault ? 1100 : 900);
     }).catch(function(){
       setResultAmount(reward.amount || 1);
       setTimeout(function(){
         setGameStage("complete");
         onComplete(zone, null);
-      }, 900);
+      }, isVault ? 1100 : 900);
     });
   };
 
@@ -1142,9 +1189,13 @@ function CoinDropGame(props){
     });
   };
 
-  const instruct = tiltUnavailable || !tiltAllowedSetting
-    ? "Drag or use the arrows to guide it"
-    : "Tilt to guide it into your vault";
+  const steerHint = tiltUnavailable || !tiltAllowedSetting
+    ? "Drag the board or tap ◀ ▶ to steer"
+    : "Tilt the phone, or use drag / ◀ ▶";
+
+  const instruct = gameStage === "ready"
+    ? "Aim for the VAULT — you keep your coin either way"
+    : steerHint;
 
   return (
     <div className="modal coin-drop-modal">
@@ -1172,11 +1223,22 @@ function CoinDropGame(props){
             width={CD_W}
             height={CD_H}
             role="img"
-            aria-label="Coin drop game. Guide the coin into the vault."
+            aria-label="Coin drop game. Guide the coin into the vault. You keep your coin either way."
           />
+          {gameStage === "ready" && (
+            <div className="coin-drop-rules" aria-live="polite">
+              <p className="coin-drop-rules-title">How to play</p>
+              <ol className="coin-drop-rules-list">
+                <li>Steer with tilt, drag, or the arrows</li>
+                <li>Aim for the gold <strong>VAULT</strong> in the middle</li>
+                <li>Sides still count — you always keep your coin</li>
+              </ol>
+            </div>
+          )}
           {gameStage === "landed" || gameStage === "complete" ? (
-            <div className="coin-drop-result">
+            <div className={"coin-drop-result" + (resultVault ? " is-vault" : " is-side")}>
               <div className="comic burst-label">{resultText || "SUPER DROP!"}</div>
+              {resultSub && <div className="coin-drop-sub">{resultSub}</div>}
               {boostFlash && <div className="coin-drop-boost">2× POWER-UP!</div>}
               {resultAmount != null && <div className="coin-drop-amt">+{resultAmount} coin{resultAmount === 1 ? "" : "s"}</div>}
             </div>
@@ -2736,7 +2798,7 @@ function App(){
                 />
                 <span>
                   <strong>Brushing Coin Drop Game</strong>
-                  <em>Play a short tilt game after brushing.</em>
+                  <em>After brushing, play a short drop game. Aim for the vault — coin is always kept.</em>
                 </span>
               </label>
               <label className="settings-toggle">

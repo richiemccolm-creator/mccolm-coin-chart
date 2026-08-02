@@ -699,26 +699,41 @@ function playCoinSfx(kind, enabled) {
       _o.start(now);
       _o.stop(now + 0.1);
     } else if (kind === "vault") {
-      [660, 880, 1046].forEach(function (f, i) {
+      [660, 880, 1046, 1318].forEach(function (f, i) {
         var o = ctx.createOscillator();
         var g = ctx.createGain();
         o.type = "sine";
         o.frequency.value = f;
-        var t = now + i * 0.07;
+        var t = now + i * 0.08;
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+        g.gain.exponentialRampToValueAtTime(0.14, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
         o.connect(g);
         g.connect(ctx.destination);
         o.start(t);
-        o.stop(t + 0.25);
+        o.stop(t + 0.3);
+      });
+    } else if (kind === "side") {
+      [520, 660].forEach(function (f, i) {
+        var o = ctx.createOscillator();
+        var g = ctx.createGain();
+        o.type = "triangle";
+        o.frequency.value = f;
+        var t = now + i * 0.09;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.09, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.22);
       });
     }
     setTimeout(function () {
       try {
         ctx.close();
       } catch (e) {}
-    }, 800);
+    }, 900);
   } catch (e) {}
 }
 function loadState() {
@@ -1005,6 +1020,13 @@ function cdZoneLabel(zone) {
   if (zone === "right") return "NICE SHOT!";
   return "SUPER DROP!";
 }
+function cdZoneSub(zone) {
+  if (zone === "vault") return "Straight into the vault!";
+  return "Still got your coin!";
+}
+function cdZoneIsVault(zone) {
+  return zone === "vault";
+}
 function CoinDropGame(props) {
   var kid = props.kid;
   var reward = props.reward;
@@ -1072,12 +1094,20 @@ function CoinDropGame(props) {
     setResultText = _useState8[1];
   var _useState9 = useState(null),
     _useState0 = _slicedToArray(_useState9, 2),
-    resultAmount = _useState0[0],
-    setResultAmount = _useState0[1];
+    resultSub = _useState0[0],
+    setResultSub = _useState0[1];
   var _useState1 = useState(false),
     _useState10 = _slicedToArray(_useState1, 2),
-    boostFlash = _useState10[0],
-    setBoostFlash = _useState10[1];
+    resultVault = _useState10[0],
+    setResultVault = _useState10[1];
+  var _useState11 = useState(null),
+    _useState12 = _slicedToArray(_useState11, 2),
+    resultAmount = _useState12[0],
+    setResultAmount = _useState12[1];
+  var _useState13 = useState(false),
+    _useState14 = _slicedToArray(_useState13, 2),
+    boostFlash = _useState14[0],
+    setBoostFlash = _useState14[1];
   var drawBoard = function drawBoard(ctx, coin, movers, particles, bobY) {
     var g = ctx.createLinearGradient(0, 0, 0, CD_H);
     g.addColorStop(0, "#1a3fa0");
@@ -1148,22 +1178,36 @@ function CoinDropGame(props) {
       ctx.fillText(m.label, m.x + m.w / 2, m.y + m.h / 2 + 1);
     });
     var zonesY = CD_H - 62;
-    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
     ctx.fillRect(12, zonesY, 95, 50);
     ctx.fillRect(253, zonesY, 95, 50);
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(12, zonesY, 95, 50);
+    ctx.strokeRect(253, zonesY, 95, 50);
     ctx.fillStyle = "#0b3d91";
-    ctx.strokeStyle = "#000";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#ffc42e";
+    ctx.lineWidth = 4;
     ctx.fillRect(112, zonesY - 6, 136, 56);
+    ctx.strokeRect(112, zonesY - 6, 136, 56);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
     ctx.strokeRect(112, zonesY - 6, 136, 56);
     ctx.fillStyle = "#ffc42e";
     ctx.font = "22px Luckiest Guy,Impact,sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("VAULT", CD_W / 2, zonesY + 28);
-    ctx.fillStyle = "rgba(255,255,255,0.55)";
-    ctx.font = "bold 10px sans-serif";
-    ctx.fillText("BAM!", 59, zonesY + 28);
-    ctx.fillText("NICE!", 300, zonesY + 28);
+    ctx.fillText("VAULT", CD_W / 2, zonesY + 20);
+    ctx.fillStyle = "#fff3b0";
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText("BEST DROP", CD_W / 2, zonesY + 40);
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = "bold 12px Impact,sans-serif";
+    ctx.fillText("BAM!", 59, zonesY + 22);
+    ctx.fillText("NICE!", 300, zonesY + 22);
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = "bold 9px sans-serif";
+    ctx.fillText("keep coin", 59, zonesY + 38);
+    ctx.fillText("keep coin", 300, zonesY + 38);
     particles.forEach(function (pt) {
       ctx.globalAlpha = Math.max(0, pt.life);
       ctx.fillStyle = pt.color;
@@ -1213,21 +1257,26 @@ function CoinDropGame(props) {
     coinRef.current.active = false;
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    var isVault = cdZoneIsVault(zone);
     setGameStage("landed");
     setResultText(cdZoneLabel(zone));
-    playCoinSfx("vault", true);
+    setResultSub(cdZoneSub(zone));
+    setResultVault(isVault);
+    playCoinSfx(isVault ? "vault" : "side", true);
     try {
-      if (navigator.vibrate) navigator.vibrate(40);
+      if (navigator.vibrate) navigator.vibrate(isVault ? [30, 40, 50] : 30);
     } catch (e) {}
-    for (var i = 0; i < 18; i++) {
+    var burstCount = isVault ? 28 : 12;
+    var burstSpeed = isVault ? 8 : 5;
+    for (var i = 0; i < burstCount; i++) {
       particlesRef.current.push({
         x: coinRef.current.x,
         y: coinRef.current.y,
-        vx: (Math.random() - 0.5) * 6,
-        vy: (Math.random() - 0.5) * 6 - 2,
-        r: 2 + Math.random() * 3,
+        vx: (Math.random() - 0.5) * burstSpeed,
+        vy: (Math.random() - 0.5) * burstSpeed - (isVault ? 3 : 1.5),
+        r: 2 + Math.random() * (isVault ? 4 : 2.5),
         life: 1,
-        color: Math.random() > 0.5 ? "#ffc42e" : "#fff"
+        color: isVault ? Math.random() > 0.4 ? "#ffc42e" : "#fff" : Math.random() > 0.5 ? "#fff3b0" : "#fff"
       });
     }
     Promise.resolve(awardReward(reward)).then(function (result) {
@@ -1238,13 +1287,13 @@ function CoinDropGame(props) {
       setTimeout(function () {
         setGameStage("complete");
         onComplete(zone, result || null);
-      }, 900);
+      }, isVault ? 1100 : 900);
     }).catch(function () {
       setResultAmount(reward.amount || 1);
       setTimeout(function () {
         setGameStage("complete");
         onComplete(zone, null);
-      }, 900);
+      }, isVault ? 1100 : 900);
     });
   };
   var reflectCircle = function reflectCircle(coin, cx, cy, rad) {
@@ -1506,7 +1555,8 @@ function CoinDropGame(props) {
       onComplete("vault", null);
     });
   };
-  var instruct = tiltUnavailable || !tiltAllowedSetting ? "Drag or use the arrows to guide it" : "Tilt to guide it into your vault";
+  var steerHint = tiltUnavailable || !tiltAllowedSetting ? "Drag the board or tap ◀ ▶ to steer" : "Tilt the phone, or use drag / ◀ ▶";
+  var instruct = gameStage === "ready" ? "Aim for the VAULT — you keep your coin either way" : steerHint;
   return /*#__PURE__*/React.createElement("div", {
     className: "modal coin-drop-modal"
   }, /*#__PURE__*/React.createElement("div", {
@@ -1534,12 +1584,21 @@ function CoinDropGame(props) {
     width: CD_W,
     height: CD_H,
     role: "img",
-    "aria-label": "Coin drop game. Guide the coin into the vault."
-  }), gameStage === "landed" || gameStage === "complete" ? /*#__PURE__*/React.createElement("div", {
-    className: "coin-drop-result"
+    "aria-label": "Coin drop game. Guide the coin into the vault. You keep your coin either way."
+  }), gameStage === "ready" && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-rules",
+    "aria-live": "polite"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "coin-drop-rules-title"
+  }, "How to play"), /*#__PURE__*/React.createElement("ol", {
+    className: "coin-drop-rules-list"
+  }, /*#__PURE__*/React.createElement("li", null, "Steer with tilt, drag, or the arrows"), /*#__PURE__*/React.createElement("li", null, "Aim for the gold ", /*#__PURE__*/React.createElement("strong", null, "VAULT"), " in the middle"), /*#__PURE__*/React.createElement("li", null, "Sides still count — you always keep your coin"))), gameStage === "landed" || gameStage === "complete" ? /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-result" + (resultVault ? " is-vault" : " is-side")
   }, /*#__PURE__*/React.createElement("div", {
     className: "comic burst-label"
-  }, resultText || "SUPER DROP!"), boostFlash && /*#__PURE__*/React.createElement("div", {
+  }, resultText || "SUPER DROP!"), resultSub && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-sub"
+  }, resultSub), boostFlash && /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-boost"
   }, "2× POWER-UP!"), resultAmount != null && /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-amt"
@@ -1595,67 +1654,67 @@ function App() {
   var initial = useMemo(function () {
     return loadState();
   }, []);
-  var _useState11 = useState(initial.kid),
-    _useState12 = _slicedToArray(_useState11, 2),
-    kid = _useState12[0],
-    setKid = _useState12[1];
-  var _useState13 = useState(initial.coins),
-    _useState14 = _slicedToArray(_useState13, 2),
-    coins = _useState14[0],
-    setCoins = _useState14[1];
-  var _useState15 = useState(initial.log),
+  var _useState15 = useState(initial.kid),
     _useState16 = _slicedToArray(_useState15, 2),
-    log = _useState16[0],
-    setLog = _useState16[1];
-  var _useState17 = useState(initial.unlocks),
+    kid = _useState16[0],
+    setKid = _useState16[1];
+  var _useState17 = useState(initial.coins),
     _useState18 = _slicedToArray(_useState17, 2),
-    unlocks = _useState18[0],
-    setUnlocks = _useState18[1];
-  var _useState19 = useState(initial.boosts),
+    coins = _useState18[0],
+    setCoins = _useState18[1];
+  var _useState19 = useState(initial.log),
     _useState20 = _slicedToArray(_useState19, 2),
-    boosts = _useState20[0],
-    setBoosts = _useState20[1];
-  var _useState21 = useState(initial.settings || defaultSettings()),
+    log = _useState20[0],
+    setLog = _useState20[1];
+  var _useState21 = useState(initial.unlocks),
     _useState22 = _slicedToArray(_useState21, 2),
-    settings = _useState22[0],
-    setSettings = _useState22[1];
-  var _useState23 = useState(initial.pendingReward || null),
+    unlocks = _useState22[0],
+    setUnlocks = _useState22[1];
+  var _useState23 = useState(initial.boosts),
     _useState24 = _slicedToArray(_useState23, 2),
-    pendingReward = _useState24[0],
-    setPendingReward = _useState24[1];
-  var _useState25 = useState(null),
+    boosts = _useState24[0],
+    setBoosts = _useState24[1];
+  var _useState25 = useState(initial.settings || defaultSettings()),
     _useState26 = _slicedToArray(_useState25, 2),
-    modal = _useState26[0],
-    setModal = _useState26[1]; // vault | timer | history | settings | profile | unlock | coinDrop
-  var _useState27 = useState([]),
+    settings = _useState26[0],
+    setSettings = _useState26[1];
+  var _useState27 = useState(initial.pendingReward || null),
     _useState28 = _slicedToArray(_useState27, 2),
-    unlockQueue = _useState28[0],
-    setUnlockQueue = _useState28[1];
-  var unlockQueueRef = useRef([]);
+    pendingReward = _useState28[0],
+    setPendingReward = _useState28[1];
   var _useState29 = useState(null),
     _useState30 = _slicedToArray(_useState29, 2),
-    timerJob = _useState30[0],
-    setTimerJob = _useState30[1];
-  var _useState31 = useState(120),
+    modal = _useState30[0],
+    setModal = _useState30[1]; // vault | timer | history | settings | profile | unlock | coinDrop
+  var _useState31 = useState([]),
     _useState32 = _slicedToArray(_useState31, 2),
-    secs = _useState32[0],
-    setSecs = _useState32[1];
-  var _useState33 = useState(false),
+    unlockQueue = _useState32[0],
+    setUnlockQueue = _useState32[1];
+  var unlockQueueRef = useRef([]);
+  var _useState33 = useState(null),
     _useState34 = _slicedToArray(_useState33, 2),
-    running = _useState34[0],
-    setRunning = _useState34[1];
-  var _useState35 = useState(false),
+    timerJob = _useState34[0],
+    setTimerJob = _useState34[1];
+  var _useState35 = useState(120),
     _useState36 = _slicedToArray(_useState35, 2),
-    done = _useState36[0],
-    setDone = _useState36[1];
-  var _useState37 = useState(null),
+    secs = _useState36[0],
+    setSecs = _useState36[1];
+  var _useState37 = useState(false),
     _useState38 = _slicedToArray(_useState37, 2),
-    toast = _useState38[0],
-    setToast = _useState38[1];
-  var _useState39 = useState(supabaseReady() ? "syncing" : "local"),
+    running = _useState38[0],
+    setRunning = _useState38[1];
+  var _useState39 = useState(false),
     _useState40 = _slicedToArray(_useState39, 2),
-    cloud = _useState40[0],
-    setCloud = _useState40[1];
+    done = _useState40[0],
+    setDone = _useState40[1];
+  var _useState41 = useState(null),
+    _useState42 = _slicedToArray(_useState41, 2),
+    toast = _useState42[0],
+    setToast = _useState42[1];
+  var _useState43 = useState(supabaseReady() ? "syncing" : "local"),
+    _useState44 = _slicedToArray(_useState43, 2),
+    cloud = _useState44[0],
+    setCloud = _useState44[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -3540,7 +3599,7 @@ function App() {
         });
       });
     }
-  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Brushing Coin Drop Game"), /*#__PURE__*/React.createElement("em", null, "Play a short tilt game after brushing."))), /*#__PURE__*/React.createElement("label", {
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Brushing Coin Drop Game"), /*#__PURE__*/React.createElement("em", null, "After brushing, play a short drop game. Aim for the vault — coin is always kept."))), /*#__PURE__*/React.createElement("label", {
     className: "settings-toggle"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
