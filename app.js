@@ -95,7 +95,8 @@ var IMAGES = {
     "recycling": "/img/recycling.png?v=2",
     "hoover": "/img/hoover.png?v=2",
     "glass-tables": "/img/glass-tables.png?v=2",
-    "skirting": "/img/skirting.png?v=2"
+    "skirting": "/img/skirting.png?v=2",
+    "try-new": "/img/try-new.png"
   },
   shop: {
     "tv": "/img/tv.png",
@@ -219,6 +220,10 @@ var BONUS_JOBS = [{
 }, {
   id: "skirting",
   name: "Cleaning skirting",
+  coins: 2
+}, {
+  id: "try-new",
+  name: "Try new things",
   coins: 2
 }];
 var EVERYDAY_SHOP = [{

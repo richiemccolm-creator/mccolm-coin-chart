@@ -84,7 +84,8 @@ const IMAGES = {
     "recycling":"/img/recycling.png?v=2",
     "hoover":"/img/hoover.png?v=2",
     "glass-tables":"/img/glass-tables.png?v=2",
-    "skirting":"/img/skirting.png?v=2"
+    "skirting":"/img/skirting.png?v=2",
+    "try-new":"/img/try-new.png"
   },
   shop: {
     "tv":"/img/tv.png",
@@ -130,7 +131,8 @@ const BONUS_JOBS = [
   {id:"recycling", name:"Taking the recycling out", coins:2},
   {id:"hoover", name:"Hoovering properly",       coins:3},
   {id:"glass-tables", name:"Cleaning glass tables", sub:"Properly", coins:2},
-  {id:"skirting", name:"Cleaning skirting",      coins:2}
+  {id:"skirting", name:"Cleaning skirting",      coins:2},
+  {id:"try-new", name:"Try new things",          coins:2}
 ];
 const EVERYDAY_SHOP = [
   {id:"tv",         name:"Breakfast TV",      sub:"15 minutes",     coins:1},
