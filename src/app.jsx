@@ -2646,24 +2646,52 @@ function App(){
   const freeSwitchReady = !!kidBoost.freeSwitch;
 
   /* ---------- row renderers ---------- */
-  const JobRow = ({job,tone}) => (
-    <div className="row">
-      <Slot light src={IMAGES.jobs[job.id]} label={job.id} icon={job.icon} className="icon-slot"/>
-      <div className="rtext">
-        <div className="rname">{job.name}</div>
-        {job.sub && <div className="rsub">{job.sub}</div>}
+  const JobRow = ({job,tone}) => {
+    const award = () => earn(job.coins, job.name+(job.sub?" ("+job.sub+")":""), job.id);
+    return (
+      <div
+        className="row is-tappable"
+        role="button"
+        tabIndex={0}
+        onClick={award}
+        onKeyDown={(e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); award(); } }}
+      >
+        <Slot light src={IMAGES.jobs[job.id]} label={job.id} icon={job.icon} className="icon-slot"/>
+        <div className="rtext">
+          <div className="rname">{job.name}</div>
+          {job.sub && <div className="rsub">{job.sub}</div>}
+        </div>
+        {job.timer && (
+          <button
+            className="timer-mini"
+            title="Start 2-minute brushing timer"
+            onClick={(e)=>{ e.stopPropagation(); openTimer(job); }}
+          >⏱️</button>
+        )}
+        <CoinBtn
+          value={job.coins}
+          tone={tone}
+          onClick={(e)=>{ e.stopPropagation(); award(); }}
+        />
       </div>
-      {job.timer && <button className="timer-mini" title="Start 2-minute brushing timer" onClick={()=>openTimer(job)}>⏱️</button>}
-      <CoinBtn value={job.coins} tone={tone} onClick={()=>earn(job.coins,job.name+(job.sub?" ("+job.sub+")":""), job.id)}/>
-    </div>
-  );
+    );
+  };
 
   const ShopRow = ({item,tone,locked}) => {
     const isFreeSwitch = item.id === "switch15" && freeSwitchReady;
     const cost = isFreeSwitch ? 0 : item.coins;
     const cant = !isFreeSwitch && coins[kid] < item.coins;
+    const blocked = locked || cant;
+    const buy = () => { if(!blocked) spend(cost, item.name, item.id); };
     return (
-      <div className={"row "+(locked?"locked ":"")+(cant?"cant":"")+(isFreeSwitch?" free-pass":"")}>
+      <div
+        className={"row is-tappable "+(locked?"locked ":"")+(cant?"cant":"")+(isFreeSwitch?" free-pass":"")+(blocked?" is-blocked":"")}
+        role="button"
+        tabIndex={blocked ? -1 : 0}
+        aria-disabled={blocked || undefined}
+        onClick={buy}
+        onKeyDown={(e)=>{ if(blocked) return; if(e.key==="Enter"||e.key===" "){ e.preventDefault(); buy(); } }}
+      >
         <Slot light src={IMAGES.shop[item.id]} label={item.id} className="icon-slot"/>
         <div className="rtext">
           <div className="rname">{item.name}</div>
@@ -2674,8 +2702,8 @@ function App(){
           value={isFreeSwitch ? 0 : item.coins}
           word={isFreeSwitch ? "FREE" : undefined}
           tone={tone}
-          disabled={locked||cant}
-          onClick={()=>spend(cost, item.name, item.id)}
+          disabled={blocked}
+          onClick={(e)=>{ e.stopPropagation(); buy(); }}
         />
       </div>
     );
@@ -2757,13 +2785,28 @@ function App(){
             {WEEKEND_SHOP.map(i=><ShopRow key={i.id} item={i} tone="green" locked={!weekend}/>)}
 
             <div className="band purple comic">★ Special Rule ★</div>
-            <div className="row">
+            <div
+              className={"row is-tappable"+(coins[kid]<2?" cant is-blocked":"")}
+              role="button"
+              tabIndex={coins[kid]<2 ? -1 : 0}
+              aria-disabled={coins[kid]<2 || undefined}
+              onClick={()=>{ if(coins[kid]>=2) spend(2,"Mum's Food Tax","tax"); }}
+              onKeyDown={(e)=>{
+                if(coins[kid]<2) return;
+                if(e.key==="Enter"||e.key===" "){ e.preventDefault(); spend(2,"Mum's Food Tax","tax"); }
+              }}
+            >
               <Slot light src={IMAGES.shop.tax} label="tax" className="icon-slot"/>
               <div className="rtext">
                 <div className="rname">Mum's Food Tax</div>
                 <div className="rsub">Ask nicely — 2 coins per request</div>
               </div>
-              <CoinBtn value={2} word="PER REQ" onClick={()=>spend(2,"Mum's Food Tax","tax")} disabled={coins[kid]<2}/>
+              <CoinBtn
+                value={2}
+                word="PER REQ"
+                disabled={coins[kid]<2}
+                onClick={(e)=>{ e.stopPropagation(); if(coins[kid]>=2) spend(2,"Mum's Food Tax","tax"); }}
+              />
             </div>
 
             <div className="band red comic">★ Savings Shop — weekends ★</div>

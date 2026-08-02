@@ -3176,8 +3176,20 @@ function App() {
   var JobRow = function JobRow(_ref3) {
     var job = _ref3.job,
       tone = _ref3.tone;
+    var award = function award() {
+      return earn(job.coins, job.name + (job.sub ? " (" + job.sub + ")" : ""), job.id);
+    };
     return /*#__PURE__*/React.createElement("div", {
-      className: "row"
+      className: "row is-tappable",
+      role: "button",
+      tabIndex: 0,
+      onClick: award,
+      onKeyDown: function onKeyDown(e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          award();
+        }
+      }
     }, /*#__PURE__*/React.createElement(Slot, {
       light: true,
       src: IMAGES.jobs[job.id],
@@ -3193,14 +3205,16 @@ function App() {
     }, job.sub)), job.timer && /*#__PURE__*/React.createElement("button", {
       className: "timer-mini",
       title: "Start 2-minute brushing timer",
-      onClick: function onClick() {
-        return openTimer(job);
+      onClick: function onClick(e) {
+        e.stopPropagation();
+        openTimer(job);
       }
     }, "⏱️"), /*#__PURE__*/React.createElement(CoinBtn, {
       value: job.coins,
       tone: tone,
-      onClick: function onClick() {
-        return earn(job.coins, job.name + (job.sub ? " (" + job.sub + ")" : ""), job.id);
+      onClick: function onClick(e) {
+        e.stopPropagation();
+        award();
       }
     }));
   };
@@ -3211,8 +3225,23 @@ function App() {
     var isFreeSwitch = item.id === "switch15" && freeSwitchReady;
     var cost = isFreeSwitch ? 0 : item.coins;
     var cant = !isFreeSwitch && coins[kid] < item.coins;
+    var blocked = locked || cant;
+    var buy = function buy() {
+      if (!blocked) spend(cost, item.name, item.id);
+    };
     return /*#__PURE__*/React.createElement("div", {
-      className: "row " + (locked ? "locked " : "") + (cant ? "cant" : "") + (isFreeSwitch ? " free-pass" : "")
+      className: "row is-tappable " + (locked ? "locked " : "") + (cant ? "cant" : "") + (isFreeSwitch ? " free-pass" : "") + (blocked ? " is-blocked" : ""),
+      role: "button",
+      tabIndex: blocked ? -1 : 0,
+      "aria-disabled": blocked || undefined,
+      onClick: buy,
+      onKeyDown: function onKeyDown(e) {
+        if (blocked) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          buy();
+        }
+      }
     }, /*#__PURE__*/React.createElement(Slot, {
       light: true,
       src: IMAGES.shop[item.id],
@@ -3230,9 +3259,10 @@ function App() {
       value: isFreeSwitch ? 0 : item.coins,
       word: isFreeSwitch ? "FREE" : undefined,
       tone: tone,
-      disabled: locked || cant,
-      onClick: function onClick() {
-        return spend(cost, item.name, item.id);
+      disabled: blocked,
+      onClick: function onClick(e) {
+        e.stopPropagation();
+        buy();
       }
     }));
   };
@@ -3376,7 +3406,20 @@ function App() {
   }), /*#__PURE__*/React.createElement("div", {
     className: "band purple comic"
   }, "★ Special Rule ★"), /*#__PURE__*/React.createElement("div", {
-    className: "row"
+    className: "row is-tappable" + (coins[kid] < 2 ? " cant is-blocked" : ""),
+    role: "button",
+    tabIndex: coins[kid] < 2 ? -1 : 0,
+    "aria-disabled": coins[kid] < 2 || undefined,
+    onClick: function onClick() {
+      if (coins[kid] >= 2) spend(2, "Mum's Food Tax", "tax");
+    },
+    onKeyDown: function onKeyDown(e) {
+      if (coins[kid] < 2) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        spend(2, "Mum's Food Tax", "tax");
+      }
+    }
   }, /*#__PURE__*/React.createElement(Slot, {
     light: true,
     src: IMAGES.shop.tax,
@@ -3391,10 +3434,11 @@ function App() {
   }, "Ask nicely — 2 coins per request")), /*#__PURE__*/React.createElement(CoinBtn, {
     value: 2,
     word: "PER REQ",
-    onClick: function onClick() {
-      return spend(2, "Mum's Food Tax", "tax");
-    },
-    disabled: coins[kid] < 2
+    disabled: coins[kid] < 2,
+    onClick: function onClick(e) {
+      e.stopPropagation();
+      if (coins[kid] >= 2) spend(2, "Mum's Food Tax", "tax");
+    }
   })), /*#__PURE__*/React.createElement("div", {
     className: "band red comic"
   }, "★ Savings Shop — weekends ★"), !weekend && /*#__PURE__*/React.createElement("div", {
