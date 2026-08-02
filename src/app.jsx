@@ -1494,6 +1494,7 @@ function App(){
   const [done,setDone] = useState(false);
   const [toast,setToast] = useState(null);
   const [cloud,setCloud] = useState(supabaseReady() ? "syncing" : "local");
+  const [focusedRow,setFocusedRow] = useState(null);
   const canvasRef = useRef(null);
   const kidIdsRef = useRef({});
   const hydratedRef = useRef(false);
@@ -2627,7 +2628,25 @@ function App(){
       return;
     }
     setKid(key);
+    setFocusedRow(null);
   };
+
+  const vaultRef = useRef(null);
+  const [pinKid, setPinKid] = useState(false);
+  useEffect(function(){
+    const el = vaultRef.current;
+    if(!el) return;
+    if(typeof IntersectionObserver === "undefined"){
+      setPinKid(true);
+      return;
+    }
+    const io = new IntersectionObserver(function(entries){
+      const entry = entries[0];
+      if(entry) setPinKid(!entry.isIntersecting);
+    }, {threshold:0, rootMargin:"-12px 0px 0px 0px"});
+    io.observe(el);
+    return function(){ io.disconnect(); };
+  },[]);
 
   const mmss=(s)=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
   const pct = 1-(secs/120);
@@ -2647,19 +2666,29 @@ function App(){
 
   /* ---------- row renderers ---------- */
   const JobRow = ({job,tone}) => {
+    const rowKey = "job:"+job.id;
+    const focused = focusedRow === rowKey;
     const award = () => earn(job.coins, job.name+(job.sub?" ("+job.sub+")":""), job.id);
+    const onCoin = (e) => {
+      e.stopPropagation();
+      if(!focused){ setFocusedRow(rowKey); return; }
+      award();
+      setFocusedRow(null);
+    };
     return (
       <div
-        className="row is-tappable"
+        className={"row is-pickable"+(focused?" is-focused":"")}
         role="button"
         tabIndex={0}
-        onClick={award}
-        onKeyDown={(e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); award(); } }}
+        aria-pressed={focused}
+        onClick={()=>setFocusedRow(rowKey)}
+        onKeyDown={(e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); setFocusedRow(rowKey); } }}
       >
         <Slot light src={IMAGES.jobs[job.id]} label={job.id} icon={job.icon} className="icon-slot"/>
         <div className="rtext">
           <div className="rname">{job.name}</div>
           {job.sub && <div className="rsub">{job.sub}</div>}
+          {focused && <div className="rsub focus-hint">Now tap the coin ✓</div>}
         </div>
         {job.timer && (
           <button
@@ -2668,42 +2697,48 @@ function App(){
             onClick={(e)=>{ e.stopPropagation(); openTimer(job); }}
           >⏱️</button>
         )}
-        <CoinBtn
-          value={job.coins}
-          tone={tone}
-          onClick={(e)=>{ e.stopPropagation(); award(); }}
-        />
+        <CoinBtn value={job.coins} tone={tone} onClick={onCoin}/>
       </div>
     );
   };
 
   const ShopRow = ({item,tone,locked}) => {
+    const rowKey = "shop:"+item.id;
+    const focused = focusedRow === rowKey;
     const isFreeSwitch = item.id === "switch15" && freeSwitchReady;
     const cost = isFreeSwitch ? 0 : item.coins;
     const cant = !isFreeSwitch && coins[kid] < item.coins;
     const blocked = locked || cant;
     const buy = () => { if(!blocked) spend(cost, item.name, item.id); };
+    const onCoin = (e) => {
+      e.stopPropagation();
+      if(blocked) return;
+      if(!focused){ setFocusedRow(rowKey); return; }
+      buy();
+      setFocusedRow(null);
+    };
     return (
       <div
-        className={"row is-tappable "+(locked?"locked ":"")+(cant?"cant":"")+(isFreeSwitch?" free-pass":"")+(blocked?" is-blocked":"")}
+        className={"row is-pickable "+(locked?"locked ":"")+(cant?"cant":"")+(isFreeSwitch?" free-pass":"")+(focused?" is-focused":"")}
         role="button"
-        tabIndex={blocked ? -1 : 0}
-        aria-disabled={blocked || undefined}
-        onClick={buy}
-        onKeyDown={(e)=>{ if(blocked) return; if(e.key==="Enter"||e.key===" "){ e.preventDefault(); buy(); } }}
+        tabIndex={0}
+        aria-pressed={focused}
+        onClick={()=>setFocusedRow(rowKey)}
+        onKeyDown={(e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); setFocusedRow(rowKey); } }}
       >
         <Slot light src={IMAGES.shop[item.id]} label={item.id} className="icon-slot"/>
         <div className="rtext">
           <div className="rname">{item.name}</div>
           {item.sub && <div className="rsub">{item.sub}</div>}
           {isFreeSwitch && <div className="rsub free-tag">Free Switch Pass ready!</div>}
+          {focused && !blocked && <div className="rsub focus-hint">Now tap the coin ✓</div>}
         </div>
         <CoinBtn
           value={isFreeSwitch ? 0 : item.coins}
           word={isFreeSwitch ? "FREE" : undefined}
           tone={tone}
           disabled={blocked}
-          onClick={(e)=>{ e.stopPropagation(); buy(); }}
+          onClick={onCoin}
         />
       </div>
     );
@@ -2738,7 +2773,7 @@ function App(){
       </div>
 
       {/* ---------------- VAULT ---------------- */}
-      <div className="vault" onClick={openVault}>
+      <div className="vault" ref={vaultRef} onClick={openVault}>
         <Slot light src={IMAGES[K.img]} label={K.name} style={{width:"56px",height:"56px",borderRadius:"50%"}}/>
         <div>
           <div className="lbl">{K.name}'s coin bank</div>
@@ -2752,6 +2787,19 @@ function App(){
         </div>
         <div className="tap">Tap the lid<br/>to tip them out ⤵</div>
       </div>
+
+      {pinKid && !modal && (
+        <button
+          type="button"
+          className={"kid-pin "+K.cls}
+          onClick={function(){ window.scrollTo({top:0, behavior:"smooth"}); }}
+          aria-label={K.name+"'s chart — tap to go to top"}
+        >
+          <Slot src={IMAGES[K.img]} label={K.name} className="kid-pin-face"/>
+          <span className="comic kid-pin-name">{K.name} {K.badge}</span>
+          <span className="kid-pin-bal">🪙 {coins[kid]}</span>
+        </button>
+      )}
 
       {/* ---------------- TWO PANELS ---------------- */}
       <div className="cols">
@@ -2786,26 +2834,32 @@ function App(){
 
             <div className="band purple comic">★ Special Rule ★</div>
             <div
-              className={"row is-tappable"+(coins[kid]<2?" cant is-blocked":"")}
+              className={"row is-pickable"+(coins[kid]<2?" cant":"")+(focusedRow==="shop:tax"?" is-focused":"")}
               role="button"
-              tabIndex={coins[kid]<2 ? -1 : 0}
-              aria-disabled={coins[kid]<2 || undefined}
-              onClick={()=>{ if(coins[kid]>=2) spend(2,"Mum's Food Tax","tax"); }}
+              tabIndex={0}
+              aria-pressed={focusedRow==="shop:tax"}
+              onClick={()=>setFocusedRow("shop:tax")}
               onKeyDown={(e)=>{
-                if(coins[kid]<2) return;
-                if(e.key==="Enter"||e.key===" "){ e.preventDefault(); spend(2,"Mum's Food Tax","tax"); }
+                if(e.key==="Enter"||e.key===" "){ e.preventDefault(); setFocusedRow("shop:tax"); }
               }}
             >
               <Slot light src={IMAGES.shop.tax} label="tax" className="icon-slot"/>
               <div className="rtext">
                 <div className="rname">Mum's Food Tax</div>
                 <div className="rsub">Ask nicely — 2 coins per request</div>
+                {focusedRow==="shop:tax" && coins[kid]>=2 && <div className="rsub focus-hint">Now tap the coin ✓</div>}
               </div>
               <CoinBtn
                 value={2}
                 word="PER REQ"
                 disabled={coins[kid]<2}
-                onClick={(e)=>{ e.stopPropagation(); if(coins[kid]>=2) spend(2,"Mum's Food Tax","tax"); }}
+                onClick={(e)=>{
+                  e.stopPropagation();
+                  if(coins[kid]<2) return;
+                  if(focusedRow!=="shop:tax"){ setFocusedRow("shop:tax"); return; }
+                  spend(2,"Mum's Food Tax","tax");
+                  setFocusedRow(null);
+                }}
               />
             </div>
 

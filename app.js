@@ -1907,6 +1907,10 @@ function App() {
     _useState48 = _slicedToArray(_useState47, 2),
     cloud = _useState48[0],
     setCloud = _useState48[1];
+  var _useState49 = useState(null),
+    _useState50 = _slicedToArray(_useState49, 2),
+    focusedRow = _useState50[0],
+    setFocusedRow = _useState50[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -3147,7 +3151,32 @@ function App() {
       return;
     }
     setKid(key);
+    setFocusedRow(null);
   };
+  var vaultRef = useRef(null);
+  var _useState51 = useState(false),
+    _useState52 = _slicedToArray(_useState51, 2),
+    pinKid = _useState52[0],
+    setPinKid = _useState52[1];
+  useEffect(function () {
+    var el = vaultRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setPinKid(true);
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      var entry = entries[0];
+      if (entry) setPinKid(!entry.isIntersecting);
+    }, {
+      threshold: 0,
+      rootMargin: "-12px 0px 0px 0px"
+    });
+    io.observe(el);
+    return function () {
+      io.disconnect();
+    };
+  }, []);
   var mmss = function mmss(s) {
     return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   };
@@ -3176,18 +3205,32 @@ function App() {
   var JobRow = function JobRow(_ref3) {
     var job = _ref3.job,
       tone = _ref3.tone;
+    var rowKey = "job:" + job.id;
+    var focused = focusedRow === rowKey;
     var award = function award() {
       return earn(job.coins, job.name + (job.sub ? " (" + job.sub + ")" : ""), job.id);
     };
+    var onCoin = function onCoin(e) {
+      e.stopPropagation();
+      if (!focused) {
+        setFocusedRow(rowKey);
+        return;
+      }
+      award();
+      setFocusedRow(null);
+    };
     return /*#__PURE__*/React.createElement("div", {
-      className: "row is-tappable",
+      className: "row is-pickable" + (focused ? " is-focused" : ""),
       role: "button",
       tabIndex: 0,
-      onClick: award,
+      "aria-pressed": focused,
+      onClick: function onClick() {
+        return setFocusedRow(rowKey);
+      },
       onKeyDown: function onKeyDown(e) {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          award();
+          setFocusedRow(rowKey);
         }
       }
     }, /*#__PURE__*/React.createElement(Slot, {
@@ -3202,7 +3245,9 @@ function App() {
       className: "rname"
     }, job.name), job.sub && /*#__PURE__*/React.createElement("div", {
       className: "rsub"
-    }, job.sub)), job.timer && /*#__PURE__*/React.createElement("button", {
+    }, job.sub), focused && /*#__PURE__*/React.createElement("div", {
+      className: "rsub focus-hint"
+    }, "Now tap the coin ✓")), job.timer && /*#__PURE__*/React.createElement("button", {
       className: "timer-mini",
       title: "Start 2-minute brushing timer",
       onClick: function onClick(e) {
@@ -3212,16 +3257,15 @@ function App() {
     }, "⏱️"), /*#__PURE__*/React.createElement(CoinBtn, {
       value: job.coins,
       tone: tone,
-      onClick: function onClick(e) {
-        e.stopPropagation();
-        award();
-      }
+      onClick: onCoin
     }));
   };
   var ShopRow = function ShopRow(_ref4) {
     var item = _ref4.item,
       tone = _ref4.tone,
       locked = _ref4.locked;
+    var rowKey = "shop:" + item.id;
+    var focused = focusedRow === rowKey;
     var isFreeSwitch = item.id === "switch15" && freeSwitchReady;
     var cost = isFreeSwitch ? 0 : item.coins;
     var cant = !isFreeSwitch && coins[kid] < item.coins;
@@ -3229,17 +3273,28 @@ function App() {
     var buy = function buy() {
       if (!blocked) spend(cost, item.name, item.id);
     };
+    var onCoin = function onCoin(e) {
+      e.stopPropagation();
+      if (blocked) return;
+      if (!focused) {
+        setFocusedRow(rowKey);
+        return;
+      }
+      buy();
+      setFocusedRow(null);
+    };
     return /*#__PURE__*/React.createElement("div", {
-      className: "row is-tappable " + (locked ? "locked " : "") + (cant ? "cant" : "") + (isFreeSwitch ? " free-pass" : "") + (blocked ? " is-blocked" : ""),
+      className: "row is-pickable " + (locked ? "locked " : "") + (cant ? "cant" : "") + (isFreeSwitch ? " free-pass" : "") + (focused ? " is-focused" : ""),
       role: "button",
-      tabIndex: blocked ? -1 : 0,
-      "aria-disabled": blocked || undefined,
-      onClick: buy,
+      tabIndex: 0,
+      "aria-pressed": focused,
+      onClick: function onClick() {
+        return setFocusedRow(rowKey);
+      },
       onKeyDown: function onKeyDown(e) {
-        if (blocked) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          buy();
+          setFocusedRow(rowKey);
         }
       }
     }, /*#__PURE__*/React.createElement(Slot, {
@@ -3255,15 +3310,14 @@ function App() {
       className: "rsub"
     }, item.sub), isFreeSwitch && /*#__PURE__*/React.createElement("div", {
       className: "rsub free-tag"
-    }, "Free Switch Pass ready!")), /*#__PURE__*/React.createElement(CoinBtn, {
+    }, "Free Switch Pass ready!"), focused && !blocked && /*#__PURE__*/React.createElement("div", {
+      className: "rsub focus-hint"
+    }, "Now tap the coin ✓")), /*#__PURE__*/React.createElement(CoinBtn, {
       value: isFreeSwitch ? 0 : item.coins,
       word: isFreeSwitch ? "FREE" : undefined,
       tone: tone,
       disabled: blocked,
-      onClick: function onClick(e) {
-        e.stopPropagation();
-        buy();
-      }
+      onClick: onCoin
     }));
   };
   return /*#__PURE__*/React.createElement("div", {
@@ -3322,6 +3376,7 @@ function App() {
     }, "Tap again for profile"));
   })), /*#__PURE__*/React.createElement("div", {
     className: "vault",
+    ref: vaultRef,
     onClick: openVault
   }, /*#__PURE__*/React.createElement(Slot, {
     light: true,
@@ -3344,7 +3399,25 @@ function App() {
     className: "boost-pill"
   }, "🎮 Free Switch"))), /*#__PURE__*/React.createElement("div", {
     className: "tap"
-  }, "Tap the lid", /*#__PURE__*/React.createElement("br", null), "to tip them out ⤵")), /*#__PURE__*/React.createElement("div", {
+  }, "Tap the lid", /*#__PURE__*/React.createElement("br", null), "to tip them out ⤵")), pinKid && !modal && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "kid-pin " + K.cls,
+    onClick: function onClick() {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+      });
+    },
+    "aria-label": K.name + "'s chart — tap to go to top"
+  }, /*#__PURE__*/React.createElement(Slot, {
+    src: IMAGES[K.img],
+    label: K.name,
+    className: "kid-pin-face"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "comic kid-pin-name"
+  }, K.name, " ", K.badge), /*#__PURE__*/React.createElement("span", {
+    className: "kid-pin-bal"
+  }, "🪙 ", coins[kid])), /*#__PURE__*/React.createElement("div", {
     className: "cols"
   }, /*#__PURE__*/React.createElement("section", {
     className: "panel earn"
@@ -3406,18 +3479,17 @@ function App() {
   }), /*#__PURE__*/React.createElement("div", {
     className: "band purple comic"
   }, "★ Special Rule ★"), /*#__PURE__*/React.createElement("div", {
-    className: "row is-tappable" + (coins[kid] < 2 ? " cant is-blocked" : ""),
+    className: "row is-pickable" + (coins[kid] < 2 ? " cant" : "") + (focusedRow === "shop:tax" ? " is-focused" : ""),
     role: "button",
-    tabIndex: coins[kid] < 2 ? -1 : 0,
-    "aria-disabled": coins[kid] < 2 || undefined,
+    tabIndex: 0,
+    "aria-pressed": focusedRow === "shop:tax",
     onClick: function onClick() {
-      if (coins[kid] >= 2) spend(2, "Mum's Food Tax", "tax");
+      return setFocusedRow("shop:tax");
     },
     onKeyDown: function onKeyDown(e) {
-      if (coins[kid] < 2) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        spend(2, "Mum's Food Tax", "tax");
+        setFocusedRow("shop:tax");
       }
     }
   }, /*#__PURE__*/React.createElement(Slot, {
@@ -3431,13 +3503,21 @@ function App() {
     className: "rname"
   }, "Mum's Food Tax"), /*#__PURE__*/React.createElement("div", {
     className: "rsub"
-  }, "Ask nicely — 2 coins per request")), /*#__PURE__*/React.createElement(CoinBtn, {
+  }, "Ask nicely — 2 coins per request"), focusedRow === "shop:tax" && coins[kid] >= 2 && /*#__PURE__*/React.createElement("div", {
+    className: "rsub focus-hint"
+  }, "Now tap the coin ✓")), /*#__PURE__*/React.createElement(CoinBtn, {
     value: 2,
     word: "PER REQ",
     disabled: coins[kid] < 2,
     onClick: function onClick(e) {
       e.stopPropagation();
-      if (coins[kid] >= 2) spend(2, "Mum's Food Tax", "tax");
+      if (coins[kid] < 2) return;
+      if (focusedRow !== "shop:tax") {
+        setFocusedRow("shop:tax");
+        return;
+      }
+      spend(2, "Mum's Food Tax", "tax");
+      setFocusedRow(null);
     }
   })), /*#__PURE__*/React.createElement("div", {
     className: "band red comic"
