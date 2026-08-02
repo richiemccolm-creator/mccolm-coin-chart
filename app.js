@@ -631,12 +631,21 @@ function defaultSettings() {
 function normalizeSettings(raw) {
   var base = defaultSettings();
   if (!raw || _typeof(raw) !== "object") return base;
-  var last = raw.lastBrushGame === "coinChase" ? "coinChase" : "coinDrop";
+  var last = "coinDrop";
+  if (raw.lastBrushGame === "coinChase") last = "coinChase";else if (raw.lastBrushGame === "mazeDash") last = "mazeDash";
   return {
     coinDropEnabled: raw.coinDropEnabled !== false,
     tiltControlsEnabled: raw.tiltControlsEnabled !== false,
     lastBrushGame: last
   };
+}
+function nextBrushGame(last) {
+  if (last === "coinDrop") return "coinChase";
+  if (last === "coinChase") return "mazeDash";
+  return "coinDrop";
+}
+function isPracticeBrushSource(source) {
+  return source === "test-drop" || source === "test-chase" || source === "test-dash";
 }
 function normalizePendingReward(raw) {
   if (!raw || _typeof(raw) !== "object" || !raw.rewardId || !raw.kidId) return null;
@@ -2377,76 +2386,596 @@ function CoinChaseGame(props) {
   }, "Close")));
 }
 
+/* ================= MAZE DASH MINI-GAME ================= */
+var MD_W = 360;
+var MD_H = 420;
+var MD_COLS = 11;
+var MD_ROWS = 13;
+var MD_CELL = 28;
+var MD_OX = (MD_W - MD_COLS * MD_CELL) / 2;
+var MD_OY = 28;
+var MD_SPEED = 2.8;
+var MD_TIME_SEC = 30;
+/* 1 = wall, 0 = path. Start top-left path, finish bottom-right. */
+var MD_MAZE = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], [1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1], [1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1], [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1], [1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1], [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]];
+var MD_START = {
+  c: 1,
+  r: 1
+};
+var MD_FINISH = {
+  c: 9,
+  r: 11
+};
+function mdCellCenter(c, r) {
+  return {
+    x: MD_OX + c * MD_CELL + MD_CELL / 2,
+    y: MD_OY + r * MD_CELL + MD_CELL / 2
+  };
+}
+function mdIsWall(c, r) {
+  if (r < 0 || c < 0 || r >= MD_ROWS || c >= MD_COLS) return true;
+  return MD_MAZE[r][c] === 1;
+}
+function MazeDashGame(props) {
+  var kid = props.kid;
+  var reward = props.reward;
+  var onComplete = props.onComplete;
+  var onClose = props.onClose;
+  var awardReward = props.awardReward;
+  var canvasRef = useRef(null);
+  var playerRef = useRef({
+    c: MD_START.c,
+    r: MD_START.r,
+    x: mdCellCenter(MD_START.c, MD_START.r).x,
+    y: mdCellCenter(MD_START.c, MD_START.r).y,
+    dir: {
+      dc: 0,
+      dr: 0
+    },
+    nextDir: {
+      dc: 0,
+      dr: 0
+    }
+  });
+  var animationFrameRef = useRef(0);
+  var finishedRef = useRef(false);
+  var endDeadlineRef = useRef(0);
+  var awardResultRef = useRef(null);
+  var reducedRef = useRef(prefersReducedMotion());
+  var themeRef = useRef(cdThemeForKid(kid));
+  var particlesRef = useRef([]);
+  var pointerStartRef = useRef(null);
+  var lastShownSecRef = useRef(MD_TIME_SEC);
+  var playingRef = useRef(false);
+  var _useState37 = useState("ready"),
+    _useState38 = _slicedToArray(_useState37, 2),
+    gameStage = _useState38[0],
+    setGameStage = _useState38[1];
+  var _useState39 = useState(MD_TIME_SEC),
+    _useState40 = _slicedToArray(_useState39, 2),
+    secsLeft = _useState40[0],
+    setSecsLeft = _useState40[1];
+  var _useState41 = useState(false),
+    _useState42 = _slicedToArray(_useState41, 2),
+    resultWon = _useState42[0],
+    setResultWon = _useState42[1];
+  var _useState43 = useState(null),
+    _useState44 = _slicedToArray(_useState43, 2),
+    resultText = _useState44[0],
+    setResultText = _useState44[1];
+  var _useState45 = useState(null),
+    _useState46 = _slicedToArray(_useState45, 2),
+    resultSub = _useState46[0],
+    setResultSub = _useState46[1];
+  var _useState47 = useState(null),
+    _useState48 = _slicedToArray(_useState47, 2),
+    resultCheer = _useState48[0],
+    setResultCheer = _useState48[1];
+  var _useState49 = useState(null),
+    _useState50 = _slicedToArray(_useState49, 2),
+    resultAmount = _useState50[0],
+    setResultAmount = _useState50[1];
+  var _useState51 = useState(false),
+    _useState52 = _slicedToArray(_useState51, 2),
+    boostFlash = _useState52[0],
+    setBoostFlash = _useState52[1];
+  themeRef.current = cdThemeForKid(kid);
+  var drawBoard = function drawBoard(ctx) {
+    var theme = themeRef.current;
+    var player = playerRef.current;
+    var g = ctx.createLinearGradient(0, 0, 0, MD_H);
+    g.addColorStop(0, theme.top);
+    g.addColorStop(1, theme.bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, MD_W, MD_H);
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#fff";
+    for (var hx = 10; hx < MD_W; hx += 16) {
+      for (var hy = 10; hy < MD_H; hy += 16) {
+        ctx.beginPath();
+        ctx.arc(hx, hy, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    for (var r = 0; r < MD_ROWS; r++) {
+      for (var c = 0; c < MD_COLS; c++) {
+        if (MD_MAZE[r][c] !== 1) continue;
+        var x = MD_OX + c * MD_CELL;
+        var y = MD_OY + r * MD_CELL;
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(x + 1, y + 1, MD_CELL - 2, MD_CELL - 2);
+        ctx.strokeStyle = theme.mover;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 2, y + 2, MD_CELL - 4, MD_CELL - 4);
+      }
+    }
+    var startP = mdCellCenter(MD_START.c, MD_START.r);
+    ctx.fillStyle = "rgba(255,255,255,0.22)";
+    ctx.beginPath();
+    ctx.arc(startP.x, startP.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 9px Nunito, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("GO", startP.x, startP.y + 3);
+    var finP = mdCellCenter(MD_FINISH.c, MD_FINISH.r);
+    var fx = MD_OX + MD_FINISH.c * MD_CELL + 3;
+    var fy = MD_OY + MD_FINISH.r * MD_CELL + 3;
+    ctx.fillStyle = theme.vault || "#0b3d91";
+    ctx.fillRect(fx, fy, MD_CELL - 6, MD_CELL - 6);
+    ctx.strokeStyle = theme.vaultStroke || "#ffc42e";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(fx, fy, MD_CELL - 6, MD_CELL - 6);
+    ctx.fillStyle = theme.vaultText || "#ffc42e";
+    ctx.font = "bold 8px Nunito, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("END", finP.x, finP.y + 3);
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = kid.colour || theme.accent;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#000";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(player.x - 3.5, player.y - 2.5, 2.2, 0, Math.PI * 2);
+    ctx.arc(player.x + 3.5, player.y - 2.5, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = "#111";
+    ctx.fill();
+    particlesRef.current.forEach(function (pt) {
+      ctx.globalAlpha = Math.max(0, pt.life);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+      ctx.fillStyle = pt.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(MD_W / 2 - 60, 4, 120, 22);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 13px Nunito, sans-serif";
+    ctx.textAlign = "center";
+    var remain = endDeadlineRef.current ? Math.max(0, Math.ceil((endDeadlineRef.current - Date.now()) / 1000)) : MD_TIME_SEC;
+    ctx.fillText("⏱ " + remain + "s", MD_W / 2, 19);
+  };
+  var finishGame = function finishGame(won) {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    playingRef.current = false;
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    var theme = themeRef.current;
+    var player = playerRef.current;
+    setResultWon(!!won);
+    if (won) {
+      setResultText("MADE IT!");
+      setResultSub("You reached the finish — amazing!");
+      setResultCheer("Maze Dash champ!");
+      playCoinSfx("vault", true);
+    } else {
+      setResultText("TIME'S UP!");
+      setResultSub("Your brush coin is safe either way!");
+      setResultCheer("Coin saved!");
+      playCoinSfx("side", true);
+    }
+    for (var i = 0; i < (won ? 28 : 12); i++) {
+      particlesRef.current.push({
+        x: player.x,
+        y: player.y,
+        vx: (Math.random() - 0.5) * (won ? 8 : 4),
+        vy: (Math.random() - 0.5) * (won ? 8 : 4) - 2,
+        r: 2 + Math.random() * 3,
+        life: 1,
+        color: Math.random() > 0.5 ? theme.particleA : theme.particleB
+      });
+    }
+    var _celebrateTick3 = function celebrateTick() {
+      particlesRef.current = particlesRef.current.filter(function (pt) {
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.vy += 0.12;
+        pt.life -= 0.035;
+        return pt.life > 0;
+      });
+      var canvas = canvasRef.current;
+      if (canvas) drawBoard(canvas.getContext("2d"));
+      if (particlesRef.current.length) {
+        animationFrameRef.current = requestAnimationFrame(_celebrateTick3);
+      }
+    };
+    animationFrameRef.current = requestAnimationFrame(_celebrateTick3);
+    Promise.resolve(awardReward(reward)).then(function (result) {
+      awardResultRef.current = result || null;
+      var amt = result && result.amountAwarded != null ? result.amountAwarded : reward.amount || 1;
+      setResultAmount(amt);
+      setBoostFlash(!!(result && result.boostApplied));
+      setTimeout(function () {
+        setGameStage("complete");
+      }, won ? 800 : 550);
+    }).catch(function () {
+      setResultAmount(reward.amount || 1);
+      setTimeout(function () {
+        setGameStage("complete");
+      }, won ? 800 : 550);
+    });
+  };
+  var trySetDir = function trySetDir(dc, dr) {
+    var player = playerRef.current;
+    player.nextDir = {
+      dc: dc,
+      dr: dr
+    };
+    if (player.dir.dc === 0 && player.dir.dr === 0) {
+      var nc = player.c + dc;
+      var nr = player.r + dr;
+      if (!mdIsWall(nc, nr)) {
+        player.dir = {
+          dc: dc,
+          dr: dr
+        };
+      }
+    }
+  };
+  var checkFinish = function checkFinish(c, r) {
+    if (c === MD_FINISH.c && r === MD_FINISH.r) {
+      finishGame(true);
+    }
+  };
+  var _tick3 = function tick() {
+    var canvas = canvasRef.current;
+    if (!canvas || finishedRef.current) return;
+    var ctx = canvas.getContext("2d");
+    var player = playerRef.current;
+    if (playingRef.current && !reducedRef.current) {
+      var center = mdCellCenter(player.c, player.r);
+      var atCenter = Math.abs(player.x - center.x) < 1.2 && Math.abs(player.y - center.y) < 1.2;
+      if (atCenter) {
+        player.x = center.x;
+        player.y = center.y;
+        checkFinish(player.c, player.r);
+        if (finishedRef.current) {
+          drawBoard(ctx);
+          return;
+        }
+        var nd = player.nextDir;
+        if (nd.dc || nd.dr) {
+          if (!mdIsWall(player.c + nd.dc, player.r + nd.dr)) {
+            player.dir = {
+              dc: nd.dc,
+              dr: nd.dr
+            };
+          }
+        }
+        if (player.dir.dc || player.dir.dr) {
+          if (mdIsWall(player.c + player.dir.dc, player.r + player.dir.dr)) {
+            player.dir = {
+              dc: 0,
+              dr: 0
+            };
+          } else {
+            player.c += player.dir.dc;
+            player.r += player.dir.dr;
+          }
+        }
+      }
+      if (player.dir.dc || player.dir.dr) {
+        var target = mdCellCenter(player.c, player.r);
+        var dx = target.x - player.x;
+        var dy = target.y - player.y;
+        var dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+        if (dist <= MD_SPEED) {
+          player.x = target.x;
+          player.y = target.y;
+        } else {
+          player.x += dx / dist * MD_SPEED;
+          player.y += dy / dist * MD_SPEED;
+        }
+      }
+      if (endDeadlineRef.current && Date.now() >= endDeadlineRef.current) {
+        drawBoard(ctx);
+        finishGame(false);
+        return;
+      }
+      var remain = Math.max(0, Math.ceil((endDeadlineRef.current - Date.now()) / 1000));
+      if (remain !== lastShownSecRef.current) {
+        lastShownSecRef.current = remain;
+        setSecsLeft(remain);
+      }
+    }
+    particlesRef.current = particlesRef.current.filter(function (pt) {
+      pt.x += pt.vx;
+      pt.y += pt.vy;
+      pt.vy += 0.12;
+      pt.life -= 0.03;
+      return pt.life > 0;
+    });
+    drawBoard(ctx);
+    if (finishedRef.current) return;
+    animationFrameRef.current = requestAnimationFrame(_tick3);
+  };
+  var startDash = function startDash() {
+    if (finishedRef.current || gameStage !== "ready") return;
+    endDeadlineRef.current = Date.now() + MD_TIME_SEC * 1000;
+    lastShownSecRef.current = MD_TIME_SEC;
+    setSecsLeft(MD_TIME_SEC);
+    playingRef.current = true;
+    setGameStage("playing");
+    playCoinSfx("whoosh", true);
+    if (reducedRef.current) {
+      var player = playerRef.current;
+      player.c = MD_FINISH.c;
+      player.r = MD_FINISH.r;
+      var p = mdCellCenter(MD_FINISH.c, MD_FINISH.r);
+      player.x = p.x;
+      player.y = p.y;
+      finishGame(true);
+    }
+  };
+  useEffect(function () {
+    var onKeyDown = function onKeyDown(e) {
+      if (!playingRef.current || finishedRef.current) return;
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        trySetDir(-1, 0);
+      } else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+        e.preventDefault();
+        trySetDir(1, 0);
+      } else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") {
+        e.preventDefault();
+        trySetDir(0, -1);
+      } else if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        trySetDir(0, 1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    animationFrameRef.current = requestAnimationFrame(_tick3);
+    return function () {
+      cancelAnimationFrame(animationFrameRef.current);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+  var onPointerDown = function onPointerDown(e) {
+    if (!playingRef.current) return;
+    pointerStartRef.current = {
+      x: e.clientX,
+      y: e.clientY
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {}
+  };
+  var onPointerUp = function onPointerUp(e) {
+    if (!pointerStartRef.current || !playingRef.current) return;
+    var dx = e.clientX - pointerStartRef.current.x;
+    var dy = e.clientY - pointerStartRef.current.y;
+    pointerStartRef.current = null;
+    if (Math.abs(dx) < 18 && Math.abs(dy) < 18) return;
+    if (Math.abs(dx) > Math.abs(dy)) trySetDir(dx > 0 ? 1 : -1, 0);else trySetDir(0, dy > 0 ? 1 : -1);
+  };
+  var handleClose = function handleClose() {
+    if (finishedRef.current) {
+      onClose();
+      return;
+    }
+    finishedRef.current = true;
+    playingRef.current = false;
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    Promise.resolve(awardReward(reward)).then(function (result) {
+      onComplete(result || null);
+    }).catch(function () {
+      onComplete(null);
+    });
+  };
+  var dismissResult = function dismissResult() {
+    onComplete(awardResultRef.current);
+  };
+  var isPractice = !!(reward && reward.source === "test-dash");
+  var showResult = gameStage === "complete";
+  var theme = cdThemeForKid(kid);
+  var headTitle = "Maze Dash!";
+  if (isPractice) headTitle = "Test Dash!";
+  if (showResult && resultCheer) headTitle = resultCheer;
+  var instruct = gameStage === "ready" ? "Race from GO to END before time runs out" : gameStage === "complete" ? resultWon ? "Tap Done when you're ready" : "Coin kept — tap Done" : "⏱ " + secsLeft + "s — reach the gold END";
+  return /*#__PURE__*/React.createElement("div", {
+    className: "modal coin-drop-modal maze-dash-modal"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-sheet maze-dash-sheet kid-" + kid.id,
+    onClick: function onClick(e) {
+      e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-head"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic"
+  }, headTitle), /*#__PURE__*/React.createElement("p", {
+    className: "coin-drop-instructions"
+  }, instruct)), /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-board maze-dash-board",
+    onPointerDown: onPointerDown,
+    onPointerUp: onPointerUp,
+    onPointerCancel: function onPointerCancel() {
+      pointerStartRef.current = null;
+    }
+  }, /*#__PURE__*/React.createElement("canvas", {
+    ref: canvasRef,
+    className: "coin-drop-canvas",
+    width: MD_W,
+    height: MD_H,
+    role: "img",
+    "aria-label": "Maze dash. Swipe or use arrows to reach the finish before time runs out."
+  }), gameStage === "ready" && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-rules",
+    "aria-live": "polite",
+    style: {
+      borderColor: theme.accent
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "coin-drop-rules-title",
+    style: {
+      color: theme.accent
+    }
+  }, "How to play"), /*#__PURE__*/React.createElement("ol", {
+    className: "coin-drop-rules-list"
+  }, /*#__PURE__*/React.createElement("li", null, "Use ", /*#__PURE__*/React.createElement("strong", null, "arrows"), " or ", /*#__PURE__*/React.createElement("strong", null, "swipe"), " to move"), /*#__PURE__*/React.createElement("li", null, "Find the path from ", /*#__PURE__*/React.createElement("strong", null, "GO"), " to the gold ", /*#__PURE__*/React.createElement("strong", null, "END")), /*#__PURE__*/React.createElement("li", null, "Beat the clock — your brush coin is ", /*#__PURE__*/React.createElement("strong", null, "always kept"))), /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-slide-hint",
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "coin-drop-finger"
+  }, "👆👇👈👉"), /*#__PURE__*/React.createElement("span", null, "Swipe · Arrows"))), showResult ? /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-result" + (resultWon ? " is-vault" : " is-side")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "comic burst-label"
+  }, resultText || "NICE RUN!"), resultSub && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-sub"
+  }, resultSub), boostFlash && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-boost"
+  }, "2× POWER-UP!"), isPractice ? /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-amt coin-drop-practice"
+  }, "Practice — no coins added") : resultAmount != null && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-amt"
+  }, "+", resultAmount, " coin", resultAmount === 1 ? "" : "s")) : null), gameStage === "ready" && /*#__PURE__*/React.createElement("button", {
+    className: "btn go coin-drop-start",
+    type: "button",
+    onClick: startDash
+  }, "Start Dash"), gameStage === "complete" ? /*#__PURE__*/React.createElement("button", {
+    className: "btn go coin-drop-done",
+    type: "button",
+    onClick: dismissResult
+  }, resultWon ? "Awesome — Done!" : "Done") : /*#__PURE__*/React.createElement("div", {
+    className: "coin-chase-pad maze-dash-pad"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow coin-chase-up",
+    "aria-label": "Move up",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      trySetDir(0, -1);
+    }
+  }, "⬆"), /*#__PURE__*/React.createElement("div", {
+    className: "coin-chase-mid"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow",
+    "aria-label": "Move left",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      trySetDir(-1, 0);
+    }
+  }, "◀"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow",
+    "aria-label": "Move right",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      trySetDir(1, 0);
+    }
+  }, "▶")), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow coin-chase-down",
+    "aria-label": "Move down",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      trySetDir(0, 1);
+    }
+  }, "⬇")), gameStage !== "complete" && /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    type: "button",
+    onClick: handleClose
+  }, "Close")));
+}
+
 /* ================= APP ================= */
 function App() {
   var initial = useMemo(function () {
     return loadState();
   }, []);
-  var _useState37 = useState(initial.kid),
-    _useState38 = _slicedToArray(_useState37, 2),
-    kid = _useState38[0],
-    setKid = _useState38[1];
-  var _useState39 = useState(initial.coins),
-    _useState40 = _slicedToArray(_useState39, 2),
-    coins = _useState40[0],
-    setCoins = _useState40[1];
-  var _useState41 = useState(initial.log),
-    _useState42 = _slicedToArray(_useState41, 2),
-    log = _useState42[0],
-    setLog = _useState42[1];
-  var _useState43 = useState(initial.unlocks),
-    _useState44 = _slicedToArray(_useState43, 2),
-    unlocks = _useState44[0],
-    setUnlocks = _useState44[1];
-  var _useState45 = useState(initial.boosts),
-    _useState46 = _slicedToArray(_useState45, 2),
-    boosts = _useState46[0],
-    setBoosts = _useState46[1];
-  var _useState47 = useState(initial.settings || defaultSettings()),
-    _useState48 = _slicedToArray(_useState47, 2),
-    settings = _useState48[0],
-    setSettings = _useState48[1];
-  var _useState49 = useState(initial.pendingReward || null),
-    _useState50 = _slicedToArray(_useState49, 2),
-    pendingReward = _useState50[0],
-    setPendingReward = _useState50[1];
-  var _useState51 = useState(null),
-    _useState52 = _slicedToArray(_useState51, 2),
-    modal = _useState52[0],
-    setModal = _useState52[1]; // vault | timer | history | settings | profile | unlock | coinDrop
-  var _useState53 = useState([]),
+  var _useState53 = useState(initial.kid),
     _useState54 = _slicedToArray(_useState53, 2),
-    unlockQueue = _useState54[0],
-    setUnlockQueue = _useState54[1];
-  var unlockQueueRef = useRef([]);
-  var _useState55 = useState(null),
+    kid = _useState54[0],
+    setKid = _useState54[1];
+  var _useState55 = useState(initial.coins),
     _useState56 = _slicedToArray(_useState55, 2),
-    timerJob = _useState56[0],
-    setTimerJob = _useState56[1];
-  var _useState57 = useState(120),
+    coins = _useState56[0],
+    setCoins = _useState56[1];
+  var _useState57 = useState(initial.log),
     _useState58 = _slicedToArray(_useState57, 2),
-    secs = _useState58[0],
-    setSecs = _useState58[1];
-  var _useState59 = useState(false),
+    log = _useState58[0],
+    setLog = _useState58[1];
+  var _useState59 = useState(initial.unlocks),
     _useState60 = _slicedToArray(_useState59, 2),
-    running = _useState60[0],
-    setRunning = _useState60[1];
-  var _useState61 = useState(false),
+    unlocks = _useState60[0],
+    setUnlocks = _useState60[1];
+  var _useState61 = useState(initial.boosts),
     _useState62 = _slicedToArray(_useState61, 2),
-    done = _useState62[0],
-    setDone = _useState62[1];
-  var _useState63 = useState(null),
+    boosts = _useState62[0],
+    setBoosts = _useState62[1];
+  var _useState63 = useState(initial.settings || defaultSettings()),
     _useState64 = _slicedToArray(_useState63, 2),
-    toast = _useState64[0],
-    setToast = _useState64[1];
-  var _useState65 = useState(supabaseReady() ? "syncing" : "local"),
+    settings = _useState64[0],
+    setSettings = _useState64[1];
+  var _useState65 = useState(initial.pendingReward || null),
     _useState66 = _slicedToArray(_useState65, 2),
-    cloud = _useState66[0],
-    setCloud = _useState66[1];
+    pendingReward = _useState66[0],
+    setPendingReward = _useState66[1];
   var _useState67 = useState(null),
     _useState68 = _slicedToArray(_useState67, 2),
-    focusedRow = _useState68[0],
-    setFocusedRow = _useState68[1];
+    modal = _useState68[0],
+    setModal = _useState68[1]; // vault | timer | history | settings | profile | unlock | coinDrop
+  var _useState69 = useState([]),
+    _useState70 = _slicedToArray(_useState69, 2),
+    unlockQueue = _useState70[0],
+    setUnlockQueue = _useState70[1];
+  var unlockQueueRef = useRef([]);
+  var _useState71 = useState(null),
+    _useState72 = _slicedToArray(_useState71, 2),
+    timerJob = _useState72[0],
+    setTimerJob = _useState72[1];
+  var _useState73 = useState(120),
+    _useState74 = _slicedToArray(_useState73, 2),
+    secs = _useState74[0],
+    setSecs = _useState74[1];
+  var _useState75 = useState(false),
+    _useState76 = _slicedToArray(_useState75, 2),
+    running = _useState76[0],
+    setRunning = _useState76[1];
+  var _useState77 = useState(false),
+    _useState78 = _slicedToArray(_useState77, 2),
+    done = _useState78[0],
+    setDone = _useState78[1];
+  var _useState79 = useState(null),
+    _useState80 = _slicedToArray(_useState79, 2),
+    toast = _useState80[0],
+    setToast = _useState80[1];
+  var _useState81 = useState(supabaseReady() ? "syncing" : "local"),
+    _useState82 = _slicedToArray(_useState81, 2),
+    cloud = _useState82[0],
+    setCloud = _useState82[1];
+  var _useState83 = useState(null),
+    _useState84 = _slicedToArray(_useState83, 2),
+    focusedRow = _useState84[0],
+    setFocusedRow = _useState84[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -3379,7 +3908,7 @@ function App() {
   var completePendingReward = function completePendingReward(reward) {
     try {
       if (!reward || reward.awarded) return Promise.resolve(null);
-      if (reward.source === "test-drop" || reward.source === "test-chase") {
+      if (isPracticeBrushSource(reward.source)) {
         if (reward.rewardId) awardedRewardIdsRef.current[reward.rewardId] = true;
         markPendingAwarded(reward);
         return Promise.resolve({
@@ -3413,7 +3942,7 @@ function App() {
         kidId: slug,
         rewardId: reward.rewardId,
         deferCelebration: true,
-        quiet: modal === "coinDrop" || modal === "coinChase"
+        quiet: modal === "coinDrop" || modal === "coinChase" || modal === "mazeDash"
       });
       markPendingAwarded(reward);
       return Promise.resolve(result);
@@ -3435,7 +3964,7 @@ function App() {
   };
   var launchTestCoinDrop = function launchTestCoinDrop() {
     var pending = pendingRewardRef.current || pendingReward;
-    if (pending && !pending.awarded && pending.source !== "test-drop" && pending.source !== "test-chase") {
+    if (pending && !pending.awarded && !isPracticeBrushSource(pending.source)) {
       flash("Finish the open coin game first");
       return;
     }
@@ -3456,7 +3985,7 @@ function App() {
   };
   var launchTestCoinChase = function launchTestCoinChase() {
     var pending = pendingRewardRef.current || pendingReward;
-    if (pending && !pending.awarded && pending.source !== "test-drop" && pending.source !== "test-chase") {
+    if (pending && !pending.awarded && !isPracticeBrushSource(pending.source)) {
       flash("Finish the open coin game first");
       return;
     }
@@ -3474,6 +4003,27 @@ function App() {
     deferUnlockModalRef.current = true;
     setModal("coinChase");
     flash("Test chase — practice only");
+  };
+  var launchTestMazeDash = function launchTestMazeDash() {
+    var pending = pendingRewardRef.current || pendingReward;
+    if (pending && !pending.awarded && !isPracticeBrushSource(pending.source)) {
+      flash("Finish the open coin game first");
+      return;
+    }
+    var reward = {
+      rewardId: makeRewardId(),
+      kidId: kid,
+      amount: 1,
+      description: "Test Maze Dash",
+      source: "test-dash",
+      createdAt: new Date().toISOString(),
+      awarded: false
+    };
+    pendingRewardRef.current = reward;
+    setPendingReward(reward);
+    deferUnlockModalRef.current = true;
+    setModal("mazeDash");
+    flash("Test dash — practice only");
   };
   var finishCoinDropFlow = function finishCoinDropFlow() {
     deferUnlockModalRef.current = false;
@@ -3540,10 +4090,10 @@ function App() {
         pendingRewardRef.current = reward;
         setPendingReward(reward);
         deferUnlockModalRef.current = true;
-        var nextGame = settings.lastBrushGame === "coinChase" ? "coinChase" : "coinDrop";
+        var nextGame = settings.lastBrushGame === "coinChase" ? "coinChase" : settings.lastBrushGame === "mazeDash" ? "mazeDash" : "coinDrop";
         setSettings(function (s) {
           return Object.assign({}, s, {
-            lastBrushGame: nextGame === "coinDrop" ? "coinChase" : "coinDrop"
+            lastBrushGame: nextBrushGame(nextGame)
           });
         });
         setModal(nextGame);
@@ -3717,10 +4267,10 @@ function App() {
     setFocusedRow(null);
   };
   var vaultRef = useRef(null);
-  var _useState69 = useState(false),
-    _useState70 = _slicedToArray(_useState69, 2),
-    pinKid = _useState70[0],
-    setPinKid = _useState70[1];
+  var _useState85 = useState(false),
+    _useState86 = _slicedToArray(_useState85, 2),
+    pinKid = _useState86[0],
+    setPinKid = _useState86[1];
   useEffect(function () {
     var el = vaultRef.current;
     if (!el) return;
@@ -4295,6 +4845,14 @@ function App() {
     awardReward: completePendingReward,
     onComplete: handleCoinDropComplete,
     onClose: handleCoinDropComplete
+  }), modal === "mazeDash" && pendingReward && /*#__PURE__*/React.createElement(MazeDashGame, {
+    kid: Object.assign({}, KIDS[pendingReward.kidId] || K, {
+      id: pendingReward.kidId || kid
+    }),
+    reward: pendingReward,
+    awardReward: completePendingReward,
+    onComplete: handleCoinDropComplete,
+    onClose: handleCoinDropComplete
   }), modal === "history" && /*#__PURE__*/React.createElement("div", {
     className: "modal",
     onClick: function onClick() {
@@ -4524,7 +5082,7 @@ function App() {
         });
       });
     }
-  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Brushing reward games"), /*#__PURE__*/React.createElement("em", null, "After brushing, alternate Coin Drop and Coin Chase. Coin is always kept."))), /*#__PURE__*/React.createElement("label", {
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Brushing reward games"), /*#__PURE__*/React.createElement("em", null, "After brushing, rotate Coin Drop, Coin Chase, and Maze Dash. Coin is always kept."))), /*#__PURE__*/React.createElement("label", {
     className: "settings-toggle"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -4555,6 +5113,15 @@ function App() {
       marginTop: "-4px"
     }
   }, "Practice only — opens Coin Chase now, does not add coins."), /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    type: "button",
+    onClick: launchTestMazeDash
+  }, "▶ Play test dash (", K.name, ")"), /*#__PURE__*/React.createElement("div", {
+    className: "settings-note",
+    style: {
+      marginTop: "-4px"
+    }
+  }, "Practice only — opens Maze Dash now, does not add coins."), /*#__PURE__*/React.createElement("button", {
     className: "btn undo",
     onClick: undoLast,
     disabled: !log[kid].length
