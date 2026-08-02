@@ -612,13 +612,17 @@ function findNewUnlocks(slug, log, coins, ownedIds){
 /* ---------- Coin Drop mini-game (brushing reward collection) ---------- */
 const CD_W = 360;
 const CD_H = 520;
-const CD_GRAVITY = 0.18;
-const CD_AIR = 0.995;
-const CD_BOUNCE = 0.62;
-const CD_MAX_SPEED = 8;
-const CD_TILT = 0.025;
+const CD_GRAVITY = 0.2;
+const CD_AIR = 0.997;
+const CD_BOUNCE = 0.82;
+const CD_MAX_SPEED = 10;
+const CD_TILT = 0.028;
 const CD_LANDING_Y = 448;
 const CD_MAX_MS = 15000;
+const CD_JUMP_VY = -6.2;
+const CD_JUMP_COOLDOWN_MS = 380;
+const CD_STUCK_SPEED = 0.42;
+const CD_STUCK_FRAMES = 28;
 
 const CD_PEGS = [
   {x:90,y:110,r:8},{x:180,y:110,r:8},{x:270,y:110,r:8},
@@ -747,6 +751,9 @@ function CoinDropGame(props){
   const reducedRef = useRef(prefersReducedMotion());
   const themeRef = useRef(cdThemeForKid(kid));
   const vaultFlashRef = useRef(0);
+  const jumpCooldownRef = useRef(0);
+  const stuckFramesRef = useRef(0);
+  const jumpFlashRef = useRef(0);
 
   const [gameStage, setGameStage] = useState("ready");
   const [tiltEnabled, setTiltEnabled] = useState(false);
@@ -758,6 +765,7 @@ function CoinDropGame(props){
   const [resultVault, setResultVault] = useState(false);
   const [resultAmount, setResultAmount] = useState(null);
   const [boostFlash, setBoostFlash] = useState(false);
+  const [jumpReady, setJumpReady] = useState(true);
 
   themeRef.current = cdThemeForKid(kid);
 
@@ -920,6 +928,13 @@ function CoinDropGame(props){
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(theme.badge || "★", 0, 1);
+    if(jumpFlashRef.current > 0){
+      ctx.beginPath();
+      ctx.arc(0, 0, coin.radius + 6 + (8 - jumpFlashRef.current), 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255," + (jumpFlashRef.current / 10) + ")";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
     ctx.restore();
   };
 
@@ -996,7 +1011,7 @@ function CoinDropGame(props){
     });
   };
 
-  const reflectCircle = function(coin, cx, cy, rad){
+  const reflectCircle = function(coin, cx, cy, rad, kick){
     const dx = coin.x - cx;
     const dy = coin.y - cy;
     const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
@@ -1005,15 +1020,17 @@ function CoinDropGame(props){
     const nx = dx / dist;
     const ny = dy / dist;
     const overlap = min - dist;
-    coin.x += nx * overlap;
-    coin.y += ny * overlap;
+    coin.x += nx * (overlap + 0.4);
+    coin.y += ny * (overlap + 0.4);
     const vn = coin.vx * nx + coin.vy * ny;
     if(vn < 0){
       coin.vx -= (1 + CD_BOUNCE) * vn * nx;
       coin.vy -= (1 + CD_BOUNCE) * vn * ny;
     }
-    coin.vx += (Math.random() - 0.5) * 0.55;
-    coin.rotationSpeed += (Math.random() - 0.5) * 0.2;
+    const impulse = kick != null ? kick : 0.85;
+    coin.vx += nx * impulse + (Math.random() - 0.5) * 0.7;
+    coin.vy += ny * impulse + (Math.random() - 0.35) * 0.45;
+    coin.rotationSpeed += (Math.random() - 0.5) * 0.28;
     return true;
   };
 
@@ -1032,16 +1049,47 @@ function CoinDropGame(props){
     if(dist >= min) return false;
     const nx = ox / dist;
     const ny = oy / dist;
-    coin.x += nx * (min - dist);
-    coin.y += ny * (min - dist);
+    coin.x += nx * (min - dist + 0.5);
+    coin.y += ny * (min - dist + 0.5);
     const vn = coin.vx * nx + coin.vy * ny;
     if(vn < 0){
-      coin.vx -= (1 + CD_BOUNCE * 0.9) * vn * nx;
-      coin.vy -= (1 + CD_BOUNCE * 0.9) * vn * ny;
+      coin.vx -= (1 + CD_BOUNCE) * vn * nx;
+      coin.vy -= (1 + CD_BOUNCE) * vn * ny;
     }
-    coin.vx *= 0.92;
-    coin.vy *= 0.92;
-    coin.rotationSpeed += (Math.random() - 0.5) * 0.15;
+    coin.vx += nx * 1.35;
+    coin.vy += ny * 1.35 - 0.6;
+    coin.rotationSpeed += (Math.random() - 0.5) * 0.25;
+    return true;
+  };
+
+  const bumpCoin = function(reason){
+    const coin = coinRef.current;
+    if(!coin.active || coin.landed || finishedRef.current) return false;
+    const now = Date.now();
+    if(reason === "jump" && now < jumpCooldownRef.current) return false;
+
+    const steer = pointerActiveRef.current
+      ? pointerSteerRef.current
+      : (buttonSteerRef.current || keySteerRef.current || (tiltEnabledRef.current ? tiltRef.current : 0));
+
+    coin.vy = Math.min(coin.vy, 0) + CD_JUMP_VY;
+    coin.vx += steer * 2.4 + (Math.random() - 0.5) * 1.2;
+    coin.vx = clamp(coin.vx, -CD_MAX_SPEED, CD_MAX_SPEED);
+    coin.vy = clamp(coin.vy, -CD_MAX_SPEED, CD_MAX_SPEED);
+    coin.y = Math.max(coin.radius + 8, coin.y - 4);
+    coin.rotationSpeed += (Math.random() - 0.5) * 0.4;
+    stuckFramesRef.current = 0;
+    jumpFlashRef.current = 8;
+
+    if(reason === "jump"){
+      jumpCooldownRef.current = now + CD_JUMP_COOLDOWN_MS;
+      setJumpReady(false);
+      setTimeout(function(){ setJumpReady(true); }, CD_JUMP_COOLDOWN_MS);
+      playCoinSfx("whoosh", true);
+      try{ if(navigator.vibrate) navigator.vibrate(18); }catch(e){}
+    }else{
+      playCoinSfx("peg", true);
+    }
     return true;
   };
 
@@ -1063,6 +1111,8 @@ function CoinDropGame(props){
       bobY = coin.y + Math.sin(now / 320) * 4;
     }
 
+    if(jumpFlashRef.current > 0) jumpFlashRef.current -= 1;
+
     if(coin.active && !coin.landed){
       const steering = pointerActiveRef.current
         ? pointerSteerRef.current
@@ -1081,20 +1131,20 @@ function CoinDropGame(props){
 
       if(coin.x - coin.radius < 10){
         coin.x = 10 + coin.radius;
-        coin.vx = Math.abs(coin.vx) * CD_BOUNCE;
+        coin.vx = Math.abs(coin.vx) * CD_BOUNCE + 0.4;
       }
       if(coin.x + coin.radius > CD_W - 10){
         coin.x = CD_W - 10 - coin.radius;
-        coin.vx = -Math.abs(coin.vx) * CD_BOUNCE;
+        coin.vx = -Math.abs(coin.vx) * CD_BOUNCE - 0.4;
       }
 
       var hitPeg = false;
       CD_PEGS.forEach(function(p){
-        if(reflectCircle(coin, p.x, p.y, p.r)) hitPeg = true;
+        if(reflectCircle(coin, p.x, p.y, p.r, 0.95)) hitPeg = true;
       });
-      if(hitPeg && now - pegHitCooldownRef.current > 120){
+      if(hitPeg && now - pegHitCooldownRef.current > 100){
         pegHitCooldownRef.current = now;
-        if(Math.random() < 0.35) playCoinSfx("peg", true);
+        if(Math.random() < 0.4) playCoinSfx("peg", true);
       }
 
       CD_BUMPERS.forEach(function(b){ collideBumper(coin, b); });
@@ -1102,8 +1152,22 @@ function CoinDropGame(props){
       movers.forEach(function(m){
         const cx = m.x + m.w / 2;
         const cy = m.y + m.h / 2;
-        reflectCircle(coin, cx, cy, Math.max(m.w, m.h) * 0.45);
+        reflectCircle(coin, cx, cy, Math.max(m.w, m.h) * 0.45, 1.2);
       });
+
+      const speed = Math.abs(coin.vx) + Math.abs(coin.vy);
+      if(speed < CD_STUCK_SPEED){
+        stuckFramesRef.current += 1;
+        if(stuckFramesRef.current >= CD_STUCK_FRAMES){
+          coin.vy = Math.max(coin.vy, 0) + 2.8;
+          coin.vx += (Math.random() - 0.5) * 3.2;
+          coin.y += 2;
+          stuckFramesRef.current = 0;
+          playCoinSfx("peg", true);
+        }
+      }else{
+        stuckFramesRef.current = 0;
+      }
 
       if(startTimeRef.current && now - startTimeRef.current > CD_MAX_MS - 1800){
         const targetX = CD_W / 2;
@@ -1138,6 +1202,9 @@ function CoinDropGame(props){
     coin.vx = (Math.random() - 0.5) * 0.8;
     coin.rotationSpeed = (Math.random() - 0.5) * 0.15;
     startTimeRef.current = Date.now();
+    stuckFramesRef.current = 0;
+    jumpCooldownRef.current = 0;
+    setJumpReady(true);
     setGameStage("dropping");
     playCoinSfx("whoosh", true);
 
@@ -1227,6 +1294,9 @@ function CoinDropGame(props){
       }else if(e.key === "ArrowRight" || e.key === "d" || e.key === "D"){
         e.preventDefault();
         keySteerRef.current = 1;
+      }else if(e.key === " " || e.key === "ArrowUp" || e.key === "w" || e.key === "W"){
+        e.preventDefault();
+        bumpCoin("jump");
       }
     };
     const onKeyUp = function(e){
@@ -1297,10 +1367,10 @@ function CoinDropGame(props){
   if(showResult && resultCheer) headTitle = resultCheer;
 
   const instruct = gameStage === "ready"
-    ? "Slide to steer — aim for the vault"
+    ? "Slide to steer — JUMP if it sticks"
     : gameStage === "complete"
       ? (resultVault ? "Tap Done when you're ready" : "Coin kept — tap Done")
-      : steerHint;
+      : (steerHint + " · tap JUMP");
 
   return (
     <div className="modal coin-drop-modal">
@@ -1309,7 +1379,7 @@ function CoinDropGame(props){
           <h2 className="comic">{headTitle}</h2>
           <p className="coin-drop-instructions">{instruct}</p>
           {(tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && (
-            <p className="coin-drop-toast">Tilt unavailable · Slide or use the arrows</p>
+            <p className="coin-drop-toast">Tilt unavailable · Slide, JUMP, or use the arrows</p>
           )}
         </div>
 
@@ -1326,19 +1396,19 @@ function CoinDropGame(props){
             width={CD_W}
             height={CD_H}
             role="img"
-            aria-label="Coin drop game. Slide to steer into the vault. You keep your coin either way."
+            aria-label="Coin drop pinball. Slide to steer, tap JUMP if stuck. You keep your coin either way."
           />
           {gameStage === "ready" && (
             <div className="coin-drop-rules" aria-live="polite" style={{borderColor: theme.accent}}>
               <p className="coin-drop-rules-title" style={{color: theme.accent}}>How to play</p>
               <ol className="coin-drop-rules-list">
                 <li><strong>Slide</strong> left or right on the board to steer</li>
-                <li>Aim for {kid.name}'s gold <strong>VAULT</strong> in the middle</li>
-                <li>Sides say <strong>IN / SAFE</strong> — you always keep your coin</li>
+                <li>Tap <strong>JUMP</strong> to bump the coin if it gets stuck</li>
+                <li>Aim for {kid.name}'s gold <strong>VAULT</strong> — sides still keep your coin</li>
               </ol>
               <div className="coin-drop-slide-hint" aria-hidden="true">
                 <span className="coin-drop-finger">👈👉</span>
-                <span>Slide to steer</span>
+                <span>Slide · JUMP</span>
               </div>
             </div>
           )}
@@ -1375,6 +1445,16 @@ function CoinDropGame(props){
               onPointerLeave={function(){ buttonSteerRef.current = 0; }}
               onPointerCancel={function(){ buttonSteerRef.current = 0; }}
             >◀ LEFT</button>
+            <button
+              type="button"
+              className={"coin-drop-jump" + (jumpReady ? "" : " is-cooling")}
+              aria-label="Jump bump the coin"
+              disabled={gameStage !== "dropping" || !jumpReady}
+              onPointerDown={function(e){
+                e.preventDefault();
+                bumpCoin("jump");
+              }}
+            >⬆ JUMP</button>
             <button
               type="button"
               className="coin-drop-arrow"
