@@ -1568,7 +1568,7 @@ function CoinDropGame(props) {
     className: "coin-drop-head"
   }, /*#__PURE__*/React.createElement("h2", {
     className: "comic"
-  }, reward && reward.source === "powerup-extra-drop" ? "Bonus Drop!" : "You earned a coin!"), /*#__PURE__*/React.createElement("p", {
+  }, reward && reward.source === "powerup-extra-drop" ? "Bonus Drop!" : reward && reward.source === "test-drop" ? "Test Drop!" : "You earned a coin!"), /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
   }, instruct), (tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-toast"
@@ -1600,7 +1600,9 @@ function CoinDropGame(props) {
     className: "coin-drop-sub"
   }, resultSub), boostFlash && /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-boost"
-  }, "2× POWER-UP!"), resultAmount != null && /*#__PURE__*/React.createElement("div", {
+  }, "2× POWER-UP!"), reward && reward.source === "test-drop" ? /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-amt coin-drop-practice"
+  }, "Practice — no coins added") : resultAmount != null && /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-amt"
   }, "+", resultAmount, " coin", resultAmount === 1 ? "" : "s")) : null), gameStage === "ready" && /*#__PURE__*/React.createElement("button", {
     className: "btn go coin-drop-start",
@@ -2639,6 +2641,15 @@ function App() {
   var completePendingReward = function completePendingReward(reward) {
     try {
       if (!reward || reward.awarded) return Promise.resolve(null);
+      if (reward.source === "test-drop") {
+        if (reward.rewardId) awardedRewardIdsRef.current[reward.rewardId] = true;
+        clearPendingReward();
+        return Promise.resolve({
+          amountAwarded: 0,
+          boostApplied: false,
+          practice: true
+        });
+      }
       var slug = reward.kidId;
       if (reward.rewardId && awardedRewardIdsRef.current[reward.rewardId]) {
         clearPendingReward();
@@ -2683,6 +2694,27 @@ function App() {
         return Promise.resolve(null);
       }
     }
+  };
+  var launchTestCoinDrop = function launchTestCoinDrop() {
+    var pending = pendingRewardRef.current || pendingReward;
+    if (pending && !pending.awarded && pending.source !== "test-drop") {
+      flash("Finish the open coin drop first");
+      return;
+    }
+    var reward = {
+      rewardId: makeRewardId(),
+      kidId: kid,
+      amount: 1,
+      description: "Test Coin Drop",
+      source: "test-drop",
+      createdAt: new Date().toISOString(),
+      awarded: false
+    };
+    pendingRewardRef.current = reward;
+    setPendingReward(reward);
+    deferUnlockModalRef.current = true;
+    setModal("coinDrop");
+    flash("Test drop — practice only");
   };
   var finishCoinDropFlow = function finishCoinDropFlow() {
     deferUnlockModalRef.current = false;
@@ -3612,6 +3644,15 @@ function App() {
       });
     }
   }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Tilt controls"), /*#__PURE__*/React.createElement("em", null, "Use device tilt in Coin Drop when available."))), /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    type: "button",
+    onClick: launchTestCoinDrop
+  }, "▶ Play test drop (", K.name, ")"), /*#__PURE__*/React.createElement("div", {
+    className: "settings-note",
+    style: {
+      marginTop: "-4px"
+    }
+  }, "Practice only — opens Coin Drop now, does not add coins."), /*#__PURE__*/React.createElement("button", {
     className: "btn undo",
     onClick: undoLast,
     disabled: !log[kid].length

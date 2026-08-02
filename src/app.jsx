@@ -1202,7 +1202,11 @@ function CoinDropGame(props){
       <div className={"coin-drop-sheet kid-"+kid.id} onClick={function(e){ e.stopPropagation(); }}>
         <div className="coin-drop-head">
           <h2 className="comic">
-            {reward && reward.source === "powerup-extra-drop" ? "Bonus Drop!" : "You earned a coin!"}
+            {reward && reward.source === "powerup-extra-drop"
+              ? "Bonus Drop!"
+              : reward && reward.source === "test-drop"
+                ? "Test Drop!"
+                : "You earned a coin!"}
           </h2>
           <p className="coin-drop-instructions">{instruct}</p>
           {(tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && (
@@ -1240,7 +1244,9 @@ function CoinDropGame(props){
               <div className="comic burst-label">{resultText || "SUPER DROP!"}</div>
               {resultSub && <div className="coin-drop-sub">{resultSub}</div>}
               {boostFlash && <div className="coin-drop-boost">2× POWER-UP!</div>}
-              {resultAmount != null && <div className="coin-drop-amt">+{resultAmount} coin{resultAmount === 1 ? "" : "s"}</div>}
+              {reward && reward.source === "test-drop"
+                ? <div className="coin-drop-amt coin-drop-practice">Practice — no coins added</div>
+                : resultAmount != null && <div className="coin-drop-amt">+{resultAmount} coin{resultAmount === 1 ? "" : "s"}</div>}
             </div>
           ) : null}
         </div>
@@ -2166,6 +2172,11 @@ function App(){
   const completePendingReward = function(reward){
     try{
       if(!reward || reward.awarded) return Promise.resolve(null);
+      if(reward.source === "test-drop"){
+        if(reward.rewardId) awardedRewardIdsRef.current[reward.rewardId] = true;
+        clearPendingReward();
+        return Promise.resolve({amountAwarded:0, boostApplied:false, practice:true});
+      }
       const slug = reward.kidId;
       if(reward.rewardId && awardedRewardIdsRef.current[reward.rewardId]){
         clearPendingReward();
@@ -2213,6 +2224,28 @@ function App(){
         return Promise.resolve(null);
       }
     }
+  };
+
+  const launchTestCoinDrop = function(){
+    const pending = pendingRewardRef.current || pendingReward;
+    if(pending && !pending.awarded && pending.source !== "test-drop"){
+      flash("Finish the open coin drop first");
+      return;
+    }
+    const reward = {
+      rewardId: makeRewardId(),
+      kidId: kid,
+      amount: 1,
+      description: "Test Coin Drop",
+      source: "test-drop",
+      createdAt: new Date().toISOString(),
+      awarded: false
+    };
+    pendingRewardRef.current = reward;
+    setPendingReward(reward);
+    deferUnlockModalRef.current = true;
+    setModal("coinDrop");
+    flash("Test drop — practice only");
   };
 
   const finishCoinDropFlow = function(){
@@ -2816,6 +2849,13 @@ function App(){
                   <em>Use device tilt in Coin Drop when available.</em>
                 </span>
               </label>
+
+              <button className="btn go" type="button" onClick={launchTestCoinDrop}>
+                ▶ Play test drop ({K.name})
+              </button>
+              <div className="settings-note" style={{marginTop:"-4px"}}>
+                Practice only — opens Coin Drop now, does not add coins.
+              </div>
 
               <button className="btn undo" onClick={undoLast} disabled={!log[kid].length}>↩ Undo last for {K.name}</button>
               <button className="btn stop" onClick={resetAll}>Reset all kids to 0</button>
