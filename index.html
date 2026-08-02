@@ -582,6 +582,24 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   font-size:1.05rem;color:#fff3b0;
 }
 
+/* ---------- COIN CHASE MINI-GAME ---------- */
+.coin-chase-pad{
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-orient:vertical;-webkit-box-direction:normal;-webkit-flex-direction:column;flex-direction:column;
+  -webkit-box-align:center;-webkit-align-items:center;align-items:center;
+  gap:8px;padding:0 12px 8px;
+}
+.coin-chase-mid{
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  gap:12px;width:100%;
+}
+.coin-chase-mid .coin-drop-arrow{-webkit-box-flex:1;-webkit-flex:1;flex:1}
+.coin-chase-up,
+.coin-chase-down{
+  width:46%;min-height:52px;
+}
+.coin-chase-board{background:#04113d;background:-webkit-radial-gradient(50% 0%, circle, #1a3fa0,#04113d 78%);background:radial-gradient(circle at 50% 0%,#1a3fa0,#04113d 78%)}
+
 #coinCanvas{width:100%;height:auto;background:#04113d;background:-webkit-radial-gradient(50% 30%, circle, #123a8f,#04113d);background:radial-gradient(circle at 50% 30%,#123a8f,#04113d);border:3px solid #000;border-radius:12px;display:block}
 
 .timer-num{font-family:'Luckiest Guy',Impact,sans-serif;font-size:4.5rem;text-align:center;color:#1a7a34;color:var(--green);line-height:1}

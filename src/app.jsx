@@ -331,15 +331,17 @@ function normalizeUnlockList(list){
 }
 
 function defaultSettings(){
-  return {coinDropEnabled:true, tiltControlsEnabled:true};
+  return {coinDropEnabled:true, tiltControlsEnabled:true, lastBrushGame:"coinDrop"};
 }
 
 function normalizeSettings(raw){
   const base = defaultSettings();
   if(!raw || typeof raw !== "object") return base;
+  const last = raw.lastBrushGame === "coinChase" ? "coinChase" : "coinDrop";
   return {
     coinDropEnabled: raw.coinDropEnabled !== false,
-    tiltControlsEnabled: raw.tiltControlsEnabled !== false
+    tiltControlsEnabled: raw.tiltControlsEnabled !== false,
+    lastBrushGame: last
   };
 }
 
@@ -1475,6 +1477,507 @@ function CoinDropGame(props){
   );
 }
 
+/* ================= COIN CHASE MINI-GAME ================= */
+const CC_W = 360;
+const CC_H = 420;
+const CC_COLS = 11;
+const CC_ROWS = 13;
+const CC_CELL = 28;
+const CC_OX = (CC_W - CC_COLS * CC_CELL) / 2;
+const CC_OY = 28;
+const CC_SPEED = 2.6;
+const CC_TIME_SEC = 35;
+/* 1 = wall, 0 = path. Start at (5,1). Coins on selected path cells. */
+const CC_MAZE = [
+  [1,1,1,1,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,0,0,0,0,1],
+  [1,0,1,1,1,0,1,1,1,0,1],
+  [1,0,0,0,0,0,0,0,0,0,1],
+  [1,0,1,0,1,1,1,0,1,0,1],
+  [1,0,1,0,0,0,0,0,1,0,1],
+  [1,0,1,1,1,0,1,1,1,0,1],
+  [1,0,0,0,0,0,0,0,0,0,1],
+  [1,0,1,0,1,1,1,0,1,0,1],
+  [1,0,0,0,0,0,0,0,0,0,1],
+  [1,0,1,1,0,1,0,1,1,0,1],
+  [1,0,0,0,0,0,0,0,0,0,1],
+  [1,1,1,1,1,1,1,1,1,1,1]
+];
+const CC_START = {c:5, r:1};
+const CC_COIN_CELLS = [
+  [1,1],[3,1],[7,1],[9,1],
+  [1,3],[5,3],[9,3],
+  [3,5],[7,5],
+  [1,7],[5,7],[9,7],
+  [3,9],[7,9],
+  [1,11],[5,11],[9,11]
+];
+
+function ccCellCenter(c, r){
+  return {
+    x: CC_OX + c * CC_CELL + CC_CELL / 2,
+    y: CC_OY + r * CC_CELL + CC_CELL / 2
+  };
+}
+
+function ccIsWall(c, r){
+  if(r < 0 || c < 0 || r >= CC_ROWS || c >= CC_COLS) return true;
+  return CC_MAZE[r][c] === 1;
+}
+
+function CoinChaseGame(props){
+  const kid = props.kid;
+  const reward = props.reward;
+  const onComplete = props.onComplete;
+  const onClose = props.onClose;
+  const awardReward = props.awardReward;
+
+  const canvasRef = useRef(null);
+  const playerRef = useRef({
+    c: CC_START.c,
+    r: CC_START.r,
+    x: ccCellCenter(CC_START.c, CC_START.r).x,
+    y: ccCellCenter(CC_START.c, CC_START.r).y,
+    dir: {dc:0, dr:0},
+    nextDir: {dc:0, dr:0}
+  });
+  const coinsRef = useRef(CC_COIN_CELLS.map(function(pair){
+    return {c:pair[0], r:pair[1], taken:false};
+  }));
+  const animationFrameRef = useRef(0);
+  const finishedRef = useRef(false);
+  const endDeadlineRef = useRef(0);
+  const awardResultRef = useRef(null);
+  const reducedRef = useRef(prefersReducedMotion());
+  const themeRef = useRef(cdThemeForKid(kid));
+  const particlesRef = useRef([]);
+  const pointerStartRef = useRef(null);
+  const lastShownSecRef = useRef(CC_TIME_SEC);
+  const playingRef = useRef(false);
+
+  const [gameStage, setGameStage] = useState("ready");
+  const [coinsLeft, setCoinsLeft] = useState(CC_COIN_CELLS.length);
+  const [secsLeft, setSecsLeft] = useState(CC_TIME_SEC);
+  const [resultWon, setResultWon] = useState(false);
+  const [resultText, setResultText] = useState(null);
+  const [resultSub, setResultSub] = useState(null);
+  const [resultCheer, setResultCheer] = useState(null);
+  const [resultAmount, setResultAmount] = useState(null);
+  const [boostFlash, setBoostFlash] = useState(false);
+
+  themeRef.current = cdThemeForKid(kid);
+
+  const drawBoard = function(ctx){
+    const theme = themeRef.current;
+    const player = playerRef.current;
+    const coins = coinsRef.current;
+    const g = ctx.createLinearGradient(0, 0, 0, CC_H);
+    g.addColorStop(0, theme.top);
+    g.addColorStop(1, theme.bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CC_W, CC_H);
+
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#fff";
+    for(var hx = 10; hx < CC_W; hx += 16){
+      for(var hy = 10; hy < CC_H; hy += 16){
+        ctx.beginPath();
+        ctx.arc(hx, hy, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    for(var r = 0; r < CC_ROWS; r++){
+      for(var c = 0; c < CC_COLS; c++){
+        if(CC_MAZE[r][c] !== 1) continue;
+        const x = CC_OX + c * CC_CELL;
+        const y = CC_OY + r * CC_CELL;
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(x + 1, y + 1, CC_CELL - 2, CC_CELL - 2);
+        ctx.strokeStyle = theme.mover;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 2, y + 2, CC_CELL - 4, CC_CELL - 4);
+      }
+    }
+
+    coins.forEach(function(coin){
+      if(coin.taken) return;
+      const p = ccCellCenter(coin.c, coin.r);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffc42e";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000";
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.x - 1.5, p.y - 1.5, 1.6, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.fill();
+    });
+
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = kid.colour || theme.accent;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#000";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(player.x - 3.5, player.y - 2.5, 2.2, 0, Math.PI * 2);
+    ctx.arc(player.x + 3.5, player.y - 2.5, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = "#111";
+    ctx.fill();
+
+    particlesRef.current.forEach(function(pt){
+      ctx.globalAlpha = Math.max(0, pt.life);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+      ctx.fillStyle = pt.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(8, 4, 120, 22);
+    ctx.fillRect(CC_W - 128, 4, 120, 22);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 13px Nunito, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("🪙 " + coins.filter(function(cn){ return !cn.taken; }).length + " left", 16, 19);
+    ctx.textAlign = "right";
+    const remain = endDeadlineRef.current
+      ? Math.max(0, Math.ceil((endDeadlineRef.current - Date.now()) / 1000))
+      : CC_TIME_SEC;
+    ctx.fillText("⏱ " + remain + "s", CC_W - 16, 19);
+  };
+
+  const finishGame = function(won){
+    if(finishedRef.current) return;
+    finishedRef.current = true;
+    playingRef.current = false;
+    if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+
+    const theme = themeRef.current;
+    const player = playerRef.current;
+    setResultWon(!!won);
+    if(won){
+      setResultText("ALL COINS!");
+      setResultSub("You cleared the maze — amazing!");
+      setResultCheer("Coin Chase champ!");
+      playCoinSfx("vault", true);
+    }else{
+      setResultText("TIME'S UP!");
+      setResultSub("Your brush coin is safe either way!");
+      setResultCheer("Coin saved!");
+      playCoinSfx("side", true);
+    }
+
+    for(var i = 0; i < (won ? 28 : 12); i++){
+      particlesRef.current.push({
+        x: player.x,
+        y: player.y,
+        vx: (Math.random() - 0.5) * (won ? 8 : 4),
+        vy: (Math.random() - 0.5) * (won ? 8 : 4) - 2,
+        r: 2 + Math.random() * 3,
+        life: 1,
+        color: Math.random() > 0.5 ? theme.particleA : theme.particleB
+      });
+    }
+
+    const celebrateTick = function(){
+      particlesRef.current = particlesRef.current.filter(function(pt){
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.vy += 0.12;
+        pt.life -= 0.035;
+        return pt.life > 0;
+      });
+      const canvas = canvasRef.current;
+      if(canvas) drawBoard(canvas.getContext("2d"));
+      if(particlesRef.current.length){
+        animationFrameRef.current = requestAnimationFrame(celebrateTick);
+      }
+    };
+    animationFrameRef.current = requestAnimationFrame(celebrateTick);
+
+    Promise.resolve(awardReward(reward)).then(function(result){
+      awardResultRef.current = result || null;
+      const amt = result && result.amountAwarded != null ? result.amountAwarded : (reward.amount || 1);
+      setResultAmount(amt);
+      setBoostFlash(!!(result && result.boostApplied));
+      setTimeout(function(){ setGameStage("complete"); }, won ? 800 : 550);
+    }).catch(function(){
+      setResultAmount(reward.amount || 1);
+      setTimeout(function(){ setGameStage("complete"); }, won ? 800 : 550);
+    });
+  };
+
+  const trySetDir = function(dc, dr){
+    const player = playerRef.current;
+    player.nextDir = {dc:dc, dr:dr};
+    if(player.dir.dc === 0 && player.dir.dr === 0){
+      const nc = player.c + dc;
+      const nr = player.r + dr;
+      if(!ccIsWall(nc, nr)){
+        player.dir = {dc:dc, dr:dr};
+      }
+    }
+  };
+
+  const collectAt = function(c, r){
+    var got = false;
+    coinsRef.current.forEach(function(coin){
+      if(!coin.taken && coin.c === c && coin.r === r){
+        coin.taken = true;
+        got = true;
+      }
+    });
+    if(got){
+      playCoinSfx("peg", true);
+      const left = coinsRef.current.filter(function(cn){ return !cn.taken; }).length;
+      setCoinsLeft(left);
+      if(left <= 0) finishGame(true);
+    }
+  };
+
+  const tick = function(){
+    const canvas = canvasRef.current;
+    if(!canvas || finishedRef.current) return;
+    const ctx = canvas.getContext("2d");
+    const player = playerRef.current;
+
+    if(playingRef.current && !reducedRef.current){
+      const center = ccCellCenter(player.c, player.r);
+      const atCenter = Math.abs(player.x - center.x) < 1.2 && Math.abs(player.y - center.y) < 1.2;
+
+      if(atCenter){
+        player.x = center.x;
+        player.y = center.y;
+        collectAt(player.c, player.r);
+
+        const nd = player.nextDir;
+        if(nd.dc || nd.dr){
+          if(!ccIsWall(player.c + nd.dc, player.r + nd.dr)){
+            player.dir = {dc:nd.dc, dr:nd.dr};
+          }
+        }
+        if(player.dir.dc || player.dir.dr){
+          if(ccIsWall(player.c + player.dir.dc, player.r + player.dir.dr)){
+            player.dir = {dc:0, dr:0};
+          }else{
+            player.c += player.dir.dc;
+            player.r += player.dir.dr;
+          }
+        }
+      }
+
+      if(player.dir.dc || player.dir.dr){
+        const target = ccCellCenter(player.c, player.r);
+        const dx = target.x - player.x;
+        const dy = target.y - player.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+        if(dist <= CC_SPEED){
+          player.x = target.x;
+          player.y = target.y;
+        }else{
+          player.x += (dx / dist) * CC_SPEED;
+          player.y += (dy / dist) * CC_SPEED;
+        }
+      }
+
+      if(endDeadlineRef.current && Date.now() >= endDeadlineRef.current){
+        drawBoard(ctx);
+        finishGame(false);
+        return;
+      }
+      const remain = Math.max(0, Math.ceil((endDeadlineRef.current - Date.now()) / 1000));
+      if(remain !== lastShownSecRef.current){
+        lastShownSecRef.current = remain;
+        setSecsLeft(remain);
+      }
+    }
+
+    particlesRef.current = particlesRef.current.filter(function(pt){
+      pt.x += pt.vx;
+      pt.y += pt.vy;
+      pt.vy += 0.12;
+      pt.life -= 0.03;
+      return pt.life > 0;
+    });
+
+    drawBoard(ctx);
+    if(finishedRef.current) return;
+    animationFrameRef.current = requestAnimationFrame(tick);
+  };
+
+  const startChase = function(){
+    if(finishedRef.current || gameStage !== "ready") return;
+    endDeadlineRef.current = Date.now() + CC_TIME_SEC * 1000;
+    lastShownSecRef.current = CC_TIME_SEC;
+    setSecsLeft(CC_TIME_SEC);
+    playingRef.current = true;
+    setGameStage("playing");
+    playCoinSfx("whoosh", true);
+
+    if(reducedRef.current){
+      coinsRef.current.forEach(function(c){ c.taken = true; });
+      setCoinsLeft(0);
+      finishGame(true);
+    }
+  };
+
+  useEffect(function(){
+    const onKeyDown = function(e){
+      if(!playingRef.current || finishedRef.current) return;
+      if(e.key === "ArrowLeft" || e.key === "a" || e.key === "A"){
+        e.preventDefault(); trySetDir(-1, 0);
+      }else if(e.key === "ArrowRight" || e.key === "d" || e.key === "D"){
+        e.preventDefault(); trySetDir(1, 0);
+      }else if(e.key === "ArrowUp" || e.key === "w" || e.key === "W"){
+        e.preventDefault(); trySetDir(0, -1);
+      }else if(e.key === "ArrowDown" || e.key === "s" || e.key === "S"){
+        e.preventDefault(); trySetDir(0, 1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    animationFrameRef.current = requestAnimationFrame(tick);
+    return function(){
+      cancelAnimationFrame(animationFrameRef.current);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  const onPointerDown = function(e){
+    if(!playingRef.current) return;
+    pointerStartRef.current = {x:e.clientX, y:e.clientY};
+    try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(err){}
+  };
+  const onPointerUp = function(e){
+    if(!pointerStartRef.current || !playingRef.current) return;
+    const dx = e.clientX - pointerStartRef.current.x;
+    const dy = e.clientY - pointerStartRef.current.y;
+    pointerStartRef.current = null;
+    if(Math.abs(dx) < 18 && Math.abs(dy) < 18) return;
+    if(Math.abs(dx) > Math.abs(dy)) trySetDir(dx > 0 ? 1 : -1, 0);
+    else trySetDir(0, dy > 0 ? 1 : -1);
+  };
+
+  const handleClose = function(){
+    if(finishedRef.current){
+      onClose();
+      return;
+    }
+    finishedRef.current = true;
+    if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    Promise.resolve(awardReward(reward)).then(function(result){
+      onComplete(result || null);
+    }).catch(function(){
+      onComplete(null);
+    });
+  };
+
+  const dismissResult = function(){
+    onComplete(awardResultRef.current);
+  };
+
+  const isPractice = !!(reward && reward.source === "test-chase");
+  const showResult = gameStage === "complete";
+  const theme = cdThemeForKid(kid);
+
+  let headTitle = "Coin Chase!";
+  if(isPractice) headTitle = "Test Chase!";
+  if(showResult && resultCheer) headTitle = resultCheer;
+
+  const instruct = gameStage === "ready"
+    ? "Collect every coin before time runs out"
+    : gameStage === "complete"
+      ? (resultWon ? "Tap Done when you're ready" : "Coin kept — tap Done")
+      : ("🪙 " + coinsLeft + " left · ⏱ " + secsLeft + "s");
+
+  return (
+    <div className="modal coin-drop-modal coin-chase-modal">
+      <div className={"coin-drop-sheet coin-chase-sheet kid-"+kid.id} onClick={function(e){ e.stopPropagation(); }}>
+        <div className="coin-drop-head">
+          <h2 className="comic">{headTitle}</h2>
+          <p className="coin-drop-instructions">{instruct}</p>
+        </div>
+
+        <div
+          className="coin-drop-board coin-chase-board"
+          onPointerDown={onPointerDown}
+          onPointerUp={onPointerUp}
+          onPointerCancel={function(){ pointerStartRef.current = null; }}
+        >
+          <canvas
+            ref={canvasRef}
+            className="coin-drop-canvas"
+            width={CC_W}
+            height={CC_H}
+            role="img"
+            aria-label="Coin chase maze. Swipe or use arrows to collect coins before time runs out."
+          />
+          {gameStage === "ready" && (
+            <div className="coin-drop-rules" aria-live="polite" style={{borderColor: theme.accent}}>
+              <p className="coin-drop-rules-title" style={{color: theme.accent}}>How to play</p>
+              <ol className="coin-drop-rules-list">
+                <li>Use <strong>arrows</strong> or <strong>swipe</strong> to move</li>
+                <li>Collect <strong>all the coins</strong> in the maze</li>
+                <li>Beat the clock — your brush coin is <strong>always kept</strong></li>
+              </ol>
+              <div className="coin-drop-slide-hint" aria-hidden="true">
+                <span className="coin-drop-finger">👆👇👈👉</span>
+                <span>Swipe · Arrows</span>
+              </div>
+            </div>
+          )}
+          {showResult ? (
+            <div className={"coin-drop-result" + (resultWon ? " is-vault" : " is-side")}>
+              <div className="comic burst-label">{resultText || "NICE RUN!"}</div>
+              {resultSub && <div className="coin-drop-sub">{resultSub}</div>}
+              {boostFlash && <div className="coin-drop-boost">2× POWER-UP!</div>}
+              {isPractice
+                ? <div className="coin-drop-amt coin-drop-practice">Practice — no coins added</div>
+                : resultAmount != null && <div className="coin-drop-amt">+{resultAmount} coin{resultAmount === 1 ? "" : "s"}</div>}
+            </div>
+          ) : null}
+        </div>
+
+        {gameStage === "ready" && (
+          <button className="btn go coin-drop-start" type="button" onClick={startChase}>
+            Start Chase
+          </button>
+        )}
+
+        {gameStage === "complete" ? (
+          <button className="btn go coin-drop-done" type="button" onClick={dismissResult}>
+            {resultWon ? "Awesome — Done!" : "Done"}
+          </button>
+        ) : (
+          <div className="coin-chase-pad">
+            <button type="button" className="coin-drop-arrow coin-chase-up" aria-label="Move up"
+              onPointerDown={function(e){ e.preventDefault(); trySetDir(0, -1); }}>⬆</button>
+            <div className="coin-chase-mid">
+              <button type="button" className="coin-drop-arrow" aria-label="Move left"
+                onPointerDown={function(e){ e.preventDefault(); trySetDir(-1, 0); }}>◀</button>
+              <button type="button" className="coin-drop-arrow" aria-label="Move right"
+                onPointerDown={function(e){ e.preventDefault(); trySetDir(1, 0); }}>▶</button>
+            </div>
+            <button type="button" className="coin-drop-arrow coin-chase-down" aria-label="Move down"
+              onPointerDown={function(e){ e.preventDefault(); trySetDir(0, 1); }}>⬇</button>
+          </div>
+        )}
+
+        {gameStage !== "complete" && (
+          <button className="btn close" type="button" onClick={handleClose}>Close</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ================= APP ================= */
 function App(){
   const initial = useMemo(function(){ return loadState(); },[]);
@@ -2371,7 +2874,7 @@ function App(){
   const completePendingReward = function(reward){
     try{
       if(!reward || reward.awarded) return Promise.resolve(null);
-      if(reward.source === "test-drop"){
+      if(reward.source === "test-drop" || reward.source === "test-chase"){
         if(reward.rewardId) awardedRewardIdsRef.current[reward.rewardId] = true;
         markPendingAwarded(reward);
         return Promise.resolve({amountAwarded:0, boostApplied:false, practice:true});
@@ -2398,7 +2901,7 @@ function App(){
           kidId: slug,
           rewardId: reward.rewardId,
           deferCelebration: true,
-          quiet: modal === "coinDrop"
+          quiet: modal === "coinDrop" || modal === "coinChase"
         }
       );
       markPendingAwarded(reward);
@@ -2428,8 +2931,8 @@ function App(){
 
   const launchTestCoinDrop = function(){
     const pending = pendingRewardRef.current || pendingReward;
-    if(pending && !pending.awarded && pending.source !== "test-drop"){
-      flash("Finish the open coin drop first");
+    if(pending && !pending.awarded && pending.source !== "test-drop" && pending.source !== "test-chase"){
+      flash("Finish the open coin game first");
       return;
     }
     const reward = {
@@ -2446,6 +2949,28 @@ function App(){
     deferUnlockModalRef.current = true;
     setModal("coinDrop");
     flash("Test drop — practice only");
+  };
+
+  const launchTestCoinChase = function(){
+    const pending = pendingRewardRef.current || pendingReward;
+    if(pending && !pending.awarded && pending.source !== "test-drop" && pending.source !== "test-chase"){
+      flash("Finish the open coin game first");
+      return;
+    }
+    const reward = {
+      rewardId: makeRewardId(),
+      kidId: kid,
+      amount: 1,
+      description: "Test Coin Chase",
+      source: "test-chase",
+      createdAt: new Date().toISOString(),
+      awarded: false
+    };
+    pendingRewardRef.current = reward;
+    setPendingReward(reward);
+    deferUnlockModalRef.current = true;
+    setModal("coinChase");
+    flash("Test chase — practice only");
   };
 
   const finishCoinDropFlow = function(){
@@ -2518,7 +3043,13 @@ function App(){
         pendingRewardRef.current = reward;
         setPendingReward(reward);
         deferUnlockModalRef.current = true;
-        setModal("coinDrop");
+        const nextGame = settings.lastBrushGame === "coinChase" ? "coinChase" : "coinDrop";
+        setSettings(function(s){
+          return Object.assign({}, s, {
+            lastBrushGame: nextGame === "coinDrop" ? "coinChase" : "coinDrop"
+          });
+        });
+        setModal(nextGame);
         return;
       }
 
@@ -2966,6 +3497,17 @@ function App(){
         />
       )}
 
+      {/* ---------------- COIN CHASE MINI-GAME ---------------- */}
+      {modal==="coinChase" && pendingReward && (
+        <CoinChaseGame
+          kid={Object.assign({}, KIDS[pendingReward.kidId] || K, {id: pendingReward.kidId || kid})}
+          reward={pendingReward}
+          awardReward={completePendingReward}
+          onComplete={handleCoinDropComplete}
+          onClose={handleCoinDropComplete}
+        />
+      )}
+
       {/* ---------------- HISTORY MODAL ---------------- */}
       {modal==="history" && (
         <div className="modal" onClick={()=>setModal(null)}>
@@ -3126,8 +3668,8 @@ function App(){
                   }}
                 />
                 <span>
-                  <strong>Brushing Coin Drop Game</strong>
-                  <em>After brushing, play a short drop game. Aim for the vault — coin is always kept.</em>
+                  <strong>Brushing reward games</strong>
+                  <em>After brushing, alternate Coin Drop and Coin Chase. Coin is always kept.</em>
                 </span>
               </label>
               <label className="settings-toggle">
@@ -3151,6 +3693,12 @@ function App(){
               </button>
               <div className="settings-note" style={{marginTop:"-4px"}}>
                 Practice only — opens Coin Drop now, does not add coins.
+              </div>
+              <button className="btn go" type="button" onClick={launchTestCoinChase}>
+                ▶ Play test chase ({K.name})
+              </button>
+              <div className="settings-note" style={{marginTop:"-4px"}}>
+                Practice only — opens Coin Chase now, does not add coins.
               </div>
 
               <button className="btn undo" onClick={undoLast} disabled={!log[kid].length}>↩ Undo last for {K.name}</button>

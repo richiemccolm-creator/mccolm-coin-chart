@@ -624,15 +624,18 @@ function normalizeUnlockList(list) {
 function defaultSettings() {
   return {
     coinDropEnabled: true,
-    tiltControlsEnabled: true
+    tiltControlsEnabled: true,
+    lastBrushGame: "coinDrop"
   };
 }
 function normalizeSettings(raw) {
   var base = defaultSettings();
   if (!raw || _typeof(raw) !== "object") return base;
+  var last = raw.lastBrushGame === "coinChase" ? "coinChase" : "coinDrop";
   return {
     coinDropEnabled: raw.coinDropEnabled !== false,
-    tiltControlsEnabled: raw.tiltControlsEnabled !== false
+    tiltControlsEnabled: raw.tiltControlsEnabled !== false,
+    lastBrushGame: last
   };
 }
 function normalizePendingReward(raw) {
@@ -1841,76 +1844,609 @@ function CoinDropGame(props) {
   }, "Close")));
 }
 
+/* ================= COIN CHASE MINI-GAME ================= */
+var CC_W = 360;
+var CC_H = 420;
+var CC_COLS = 11;
+var CC_ROWS = 13;
+var CC_CELL = 28;
+var CC_OX = (CC_W - CC_COLS * CC_CELL) / 2;
+var CC_OY = 28;
+var CC_SPEED = 2.6;
+var CC_TIME_SEC = 35;
+/* 1 = wall, 0 = path. Start at (5,1). Coins on selected path cells. */
+var CC_MAZE = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1], [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1], [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]];
+var CC_START = {
+  c: 5,
+  r: 1
+};
+var CC_COIN_CELLS = [[1, 1], [3, 1], [7, 1], [9, 1], [1, 3], [5, 3], [9, 3], [3, 5], [7, 5], [1, 7], [5, 7], [9, 7], [3, 9], [7, 9], [1, 11], [5, 11], [9, 11]];
+function ccCellCenter(c, r) {
+  return {
+    x: CC_OX + c * CC_CELL + CC_CELL / 2,
+    y: CC_OY + r * CC_CELL + CC_CELL / 2
+  };
+}
+function ccIsWall(c, r) {
+  if (r < 0 || c < 0 || r >= CC_ROWS || c >= CC_COLS) return true;
+  return CC_MAZE[r][c] === 1;
+}
+function CoinChaseGame(props) {
+  var kid = props.kid;
+  var reward = props.reward;
+  var onComplete = props.onComplete;
+  var onClose = props.onClose;
+  var awardReward = props.awardReward;
+  var canvasRef = useRef(null);
+  var playerRef = useRef({
+    c: CC_START.c,
+    r: CC_START.r,
+    x: ccCellCenter(CC_START.c, CC_START.r).x,
+    y: ccCellCenter(CC_START.c, CC_START.r).y,
+    dir: {
+      dc: 0,
+      dr: 0
+    },
+    nextDir: {
+      dc: 0,
+      dr: 0
+    }
+  });
+  var coinsRef = useRef(CC_COIN_CELLS.map(function (pair) {
+    return {
+      c: pair[0],
+      r: pair[1],
+      taken: false
+    };
+  }));
+  var animationFrameRef = useRef(0);
+  var finishedRef = useRef(false);
+  var endDeadlineRef = useRef(0);
+  var awardResultRef = useRef(null);
+  var reducedRef = useRef(prefersReducedMotion());
+  var themeRef = useRef(cdThemeForKid(kid));
+  var particlesRef = useRef([]);
+  var pointerStartRef = useRef(null);
+  var lastShownSecRef = useRef(CC_TIME_SEC);
+  var playingRef = useRef(false);
+  var _useState19 = useState("ready"),
+    _useState20 = _slicedToArray(_useState19, 2),
+    gameStage = _useState20[0],
+    setGameStage = _useState20[1];
+  var _useState21 = useState(CC_COIN_CELLS.length),
+    _useState22 = _slicedToArray(_useState21, 2),
+    coinsLeft = _useState22[0],
+    setCoinsLeft = _useState22[1];
+  var _useState23 = useState(CC_TIME_SEC),
+    _useState24 = _slicedToArray(_useState23, 2),
+    secsLeft = _useState24[0],
+    setSecsLeft = _useState24[1];
+  var _useState25 = useState(false),
+    _useState26 = _slicedToArray(_useState25, 2),
+    resultWon = _useState26[0],
+    setResultWon = _useState26[1];
+  var _useState27 = useState(null),
+    _useState28 = _slicedToArray(_useState27, 2),
+    resultText = _useState28[0],
+    setResultText = _useState28[1];
+  var _useState29 = useState(null),
+    _useState30 = _slicedToArray(_useState29, 2),
+    resultSub = _useState30[0],
+    setResultSub = _useState30[1];
+  var _useState31 = useState(null),
+    _useState32 = _slicedToArray(_useState31, 2),
+    resultCheer = _useState32[0],
+    setResultCheer = _useState32[1];
+  var _useState33 = useState(null),
+    _useState34 = _slicedToArray(_useState33, 2),
+    resultAmount = _useState34[0],
+    setResultAmount = _useState34[1];
+  var _useState35 = useState(false),
+    _useState36 = _slicedToArray(_useState35, 2),
+    boostFlash = _useState36[0],
+    setBoostFlash = _useState36[1];
+  themeRef.current = cdThemeForKid(kid);
+  var drawBoard = function drawBoard(ctx) {
+    var theme = themeRef.current;
+    var player = playerRef.current;
+    var coins = coinsRef.current;
+    var g = ctx.createLinearGradient(0, 0, 0, CC_H);
+    g.addColorStop(0, theme.top);
+    g.addColorStop(1, theme.bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CC_W, CC_H);
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#fff";
+    for (var hx = 10; hx < CC_W; hx += 16) {
+      for (var hy = 10; hy < CC_H; hy += 16) {
+        ctx.beginPath();
+        ctx.arc(hx, hy, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    for (var r = 0; r < CC_ROWS; r++) {
+      for (var c = 0; c < CC_COLS; c++) {
+        if (CC_MAZE[r][c] !== 1) continue;
+        var x = CC_OX + c * CC_CELL;
+        var y = CC_OY + r * CC_CELL;
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(x + 1, y + 1, CC_CELL - 2, CC_CELL - 2);
+        ctx.strokeStyle = theme.mover;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 2, y + 2, CC_CELL - 4, CC_CELL - 4);
+      }
+    }
+    coins.forEach(function (coin) {
+      if (coin.taken) return;
+      var p = ccCellCenter(coin.c, coin.r);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffc42e";
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000";
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.x - 1.5, p.y - 1.5, 1.6, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.fill();
+    });
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = kid.colour || theme.accent;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#000";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(player.x - 3.5, player.y - 2.5, 2.2, 0, Math.PI * 2);
+    ctx.arc(player.x + 3.5, player.y - 2.5, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = "#111";
+    ctx.fill();
+    particlesRef.current.forEach(function (pt) {
+      ctx.globalAlpha = Math.max(0, pt.life);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+      ctx.fillStyle = pt.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(8, 4, 120, 22);
+    ctx.fillRect(CC_W - 128, 4, 120, 22);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 13px Nunito, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("🪙 " + coins.filter(function (cn) {
+      return !cn.taken;
+    }).length + " left", 16, 19);
+    ctx.textAlign = "right";
+    var remain = endDeadlineRef.current ? Math.max(0, Math.ceil((endDeadlineRef.current - Date.now()) / 1000)) : CC_TIME_SEC;
+    ctx.fillText("⏱ " + remain + "s", CC_W - 16, 19);
+  };
+  var finishGame = function finishGame(won) {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    playingRef.current = false;
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    var theme = themeRef.current;
+    var player = playerRef.current;
+    setResultWon(!!won);
+    if (won) {
+      setResultText("ALL COINS!");
+      setResultSub("You cleared the maze — amazing!");
+      setResultCheer("Coin Chase champ!");
+      playCoinSfx("vault", true);
+    } else {
+      setResultText("TIME'S UP!");
+      setResultSub("Your brush coin is safe either way!");
+      setResultCheer("Coin saved!");
+      playCoinSfx("side", true);
+    }
+    for (var i = 0; i < (won ? 28 : 12); i++) {
+      particlesRef.current.push({
+        x: player.x,
+        y: player.y,
+        vx: (Math.random() - 0.5) * (won ? 8 : 4),
+        vy: (Math.random() - 0.5) * (won ? 8 : 4) - 2,
+        r: 2 + Math.random() * 3,
+        life: 1,
+        color: Math.random() > 0.5 ? theme.particleA : theme.particleB
+      });
+    }
+    var _celebrateTick2 = function celebrateTick() {
+      particlesRef.current = particlesRef.current.filter(function (pt) {
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.vy += 0.12;
+        pt.life -= 0.035;
+        return pt.life > 0;
+      });
+      var canvas = canvasRef.current;
+      if (canvas) drawBoard(canvas.getContext("2d"));
+      if (particlesRef.current.length) {
+        animationFrameRef.current = requestAnimationFrame(_celebrateTick2);
+      }
+    };
+    animationFrameRef.current = requestAnimationFrame(_celebrateTick2);
+    Promise.resolve(awardReward(reward)).then(function (result) {
+      awardResultRef.current = result || null;
+      var amt = result && result.amountAwarded != null ? result.amountAwarded : reward.amount || 1;
+      setResultAmount(amt);
+      setBoostFlash(!!(result && result.boostApplied));
+      setTimeout(function () {
+        setGameStage("complete");
+      }, won ? 800 : 550);
+    }).catch(function () {
+      setResultAmount(reward.amount || 1);
+      setTimeout(function () {
+        setGameStage("complete");
+      }, won ? 800 : 550);
+    });
+  };
+  var trySetDir = function trySetDir(dc, dr) {
+    var player = playerRef.current;
+    player.nextDir = {
+      dc: dc,
+      dr: dr
+    };
+    if (player.dir.dc === 0 && player.dir.dr === 0) {
+      var nc = player.c + dc;
+      var nr = player.r + dr;
+      if (!ccIsWall(nc, nr)) {
+        player.dir = {
+          dc: dc,
+          dr: dr
+        };
+      }
+    }
+  };
+  var collectAt = function collectAt(c, r) {
+    var got = false;
+    coinsRef.current.forEach(function (coin) {
+      if (!coin.taken && coin.c === c && coin.r === r) {
+        coin.taken = true;
+        got = true;
+      }
+    });
+    if (got) {
+      playCoinSfx("peg", true);
+      var left = coinsRef.current.filter(function (cn) {
+        return !cn.taken;
+      }).length;
+      setCoinsLeft(left);
+      if (left <= 0) finishGame(true);
+    }
+  };
+  var _tick2 = function tick() {
+    var canvas = canvasRef.current;
+    if (!canvas || finishedRef.current) return;
+    var ctx = canvas.getContext("2d");
+    var player = playerRef.current;
+    if (playingRef.current && !reducedRef.current) {
+      var center = ccCellCenter(player.c, player.r);
+      var atCenter = Math.abs(player.x - center.x) < 1.2 && Math.abs(player.y - center.y) < 1.2;
+      if (atCenter) {
+        player.x = center.x;
+        player.y = center.y;
+        collectAt(player.c, player.r);
+        var nd = player.nextDir;
+        if (nd.dc || nd.dr) {
+          if (!ccIsWall(player.c + nd.dc, player.r + nd.dr)) {
+            player.dir = {
+              dc: nd.dc,
+              dr: nd.dr
+            };
+          }
+        }
+        if (player.dir.dc || player.dir.dr) {
+          if (ccIsWall(player.c + player.dir.dc, player.r + player.dir.dr)) {
+            player.dir = {
+              dc: 0,
+              dr: 0
+            };
+          } else {
+            player.c += player.dir.dc;
+            player.r += player.dir.dr;
+          }
+        }
+      }
+      if (player.dir.dc || player.dir.dr) {
+        var target = ccCellCenter(player.c, player.r);
+        var dx = target.x - player.x;
+        var dy = target.y - player.y;
+        var dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+        if (dist <= CC_SPEED) {
+          player.x = target.x;
+          player.y = target.y;
+        } else {
+          player.x += dx / dist * CC_SPEED;
+          player.y += dy / dist * CC_SPEED;
+        }
+      }
+      if (endDeadlineRef.current && Date.now() >= endDeadlineRef.current) {
+        drawBoard(ctx);
+        finishGame(false);
+        return;
+      }
+      var remain = Math.max(0, Math.ceil((endDeadlineRef.current - Date.now()) / 1000));
+      if (remain !== lastShownSecRef.current) {
+        lastShownSecRef.current = remain;
+        setSecsLeft(remain);
+      }
+    }
+    particlesRef.current = particlesRef.current.filter(function (pt) {
+      pt.x += pt.vx;
+      pt.y += pt.vy;
+      pt.vy += 0.12;
+      pt.life -= 0.03;
+      return pt.life > 0;
+    });
+    drawBoard(ctx);
+    if (finishedRef.current) return;
+    animationFrameRef.current = requestAnimationFrame(_tick2);
+  };
+  var startChase = function startChase() {
+    if (finishedRef.current || gameStage !== "ready") return;
+    endDeadlineRef.current = Date.now() + CC_TIME_SEC * 1000;
+    lastShownSecRef.current = CC_TIME_SEC;
+    setSecsLeft(CC_TIME_SEC);
+    playingRef.current = true;
+    setGameStage("playing");
+    playCoinSfx("whoosh", true);
+    if (reducedRef.current) {
+      coinsRef.current.forEach(function (c) {
+        c.taken = true;
+      });
+      setCoinsLeft(0);
+      finishGame(true);
+    }
+  };
+  useEffect(function () {
+    var onKeyDown = function onKeyDown(e) {
+      if (!playingRef.current || finishedRef.current) return;
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        trySetDir(-1, 0);
+      } else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+        e.preventDefault();
+        trySetDir(1, 0);
+      } else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") {
+        e.preventDefault();
+        trySetDir(0, -1);
+      } else if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        trySetDir(0, 1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    animationFrameRef.current = requestAnimationFrame(_tick2);
+    return function () {
+      cancelAnimationFrame(animationFrameRef.current);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+  var onPointerDown = function onPointerDown(e) {
+    if (!playingRef.current) return;
+    pointerStartRef.current = {
+      x: e.clientX,
+      y: e.clientY
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {}
+  };
+  var onPointerUp = function onPointerUp(e) {
+    if (!pointerStartRef.current || !playingRef.current) return;
+    var dx = e.clientX - pointerStartRef.current.x;
+    var dy = e.clientY - pointerStartRef.current.y;
+    pointerStartRef.current = null;
+    if (Math.abs(dx) < 18 && Math.abs(dy) < 18) return;
+    if (Math.abs(dx) > Math.abs(dy)) trySetDir(dx > 0 ? 1 : -1, 0);else trySetDir(0, dy > 0 ? 1 : -1);
+  };
+  var handleClose = function handleClose() {
+    if (finishedRef.current) {
+      onClose();
+      return;
+    }
+    finishedRef.current = true;
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    Promise.resolve(awardReward(reward)).then(function (result) {
+      onComplete(result || null);
+    }).catch(function () {
+      onComplete(null);
+    });
+  };
+  var dismissResult = function dismissResult() {
+    onComplete(awardResultRef.current);
+  };
+  var isPractice = !!(reward && reward.source === "test-chase");
+  var showResult = gameStage === "complete";
+  var theme = cdThemeForKid(kid);
+  var headTitle = "Coin Chase!";
+  if (isPractice) headTitle = "Test Chase!";
+  if (showResult && resultCheer) headTitle = resultCheer;
+  var instruct = gameStage === "ready" ? "Collect every coin before time runs out" : gameStage === "complete" ? resultWon ? "Tap Done when you're ready" : "Coin kept — tap Done" : "🪙 " + coinsLeft + " left · ⏱ " + secsLeft + "s";
+  return /*#__PURE__*/React.createElement("div", {
+    className: "modal coin-drop-modal coin-chase-modal"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-sheet coin-chase-sheet kid-" + kid.id,
+    onClick: function onClick(e) {
+      e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-head"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic"
+  }, headTitle), /*#__PURE__*/React.createElement("p", {
+    className: "coin-drop-instructions"
+  }, instruct)), /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-board coin-chase-board",
+    onPointerDown: onPointerDown,
+    onPointerUp: onPointerUp,
+    onPointerCancel: function onPointerCancel() {
+      pointerStartRef.current = null;
+    }
+  }, /*#__PURE__*/React.createElement("canvas", {
+    ref: canvasRef,
+    className: "coin-drop-canvas",
+    width: CC_W,
+    height: CC_H,
+    role: "img",
+    "aria-label": "Coin chase maze. Swipe or use arrows to collect coins before time runs out."
+  }), gameStage === "ready" && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-rules",
+    "aria-live": "polite",
+    style: {
+      borderColor: theme.accent
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "coin-drop-rules-title",
+    style: {
+      color: theme.accent
+    }
+  }, "How to play"), /*#__PURE__*/React.createElement("ol", {
+    className: "coin-drop-rules-list"
+  }, /*#__PURE__*/React.createElement("li", null, "Use ", /*#__PURE__*/React.createElement("strong", null, "arrows"), " or ", /*#__PURE__*/React.createElement("strong", null, "swipe"), " to move"), /*#__PURE__*/React.createElement("li", null, "Collect ", /*#__PURE__*/React.createElement("strong", null, "all the coins"), " in the maze"), /*#__PURE__*/React.createElement("li", null, "Beat the clock — your brush coin is ", /*#__PURE__*/React.createElement("strong", null, "always kept"))), /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-slide-hint",
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "coin-drop-finger"
+  }, "👆👇👈👉"), /*#__PURE__*/React.createElement("span", null, "Swipe · Arrows"))), showResult ? /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-result" + (resultWon ? " is-vault" : " is-side")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "comic burst-label"
+  }, resultText || "NICE RUN!"), resultSub && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-sub"
+  }, resultSub), boostFlash && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-boost"
+  }, "2× POWER-UP!"), isPractice ? /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-amt coin-drop-practice"
+  }, "Practice — no coins added") : resultAmount != null && /*#__PURE__*/React.createElement("div", {
+    className: "coin-drop-amt"
+  }, "+", resultAmount, " coin", resultAmount === 1 ? "" : "s")) : null), gameStage === "ready" && /*#__PURE__*/React.createElement("button", {
+    className: "btn go coin-drop-start",
+    type: "button",
+    onClick: startChase
+  }, "Start Chase"), gameStage === "complete" ? /*#__PURE__*/React.createElement("button", {
+    className: "btn go coin-drop-done",
+    type: "button",
+    onClick: dismissResult
+  }, resultWon ? "Awesome — Done!" : "Done") : /*#__PURE__*/React.createElement("div", {
+    className: "coin-chase-pad"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow coin-chase-up",
+    "aria-label": "Move up",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      trySetDir(0, -1);
+    }
+  }, "⬆"), /*#__PURE__*/React.createElement("div", {
+    className: "coin-chase-mid"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow",
+    "aria-label": "Move left",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      trySetDir(-1, 0);
+    }
+  }, "◀"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow",
+    "aria-label": "Move right",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      trySetDir(1, 0);
+    }
+  }, "▶")), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "coin-drop-arrow coin-chase-down",
+    "aria-label": "Move down",
+    onPointerDown: function onPointerDown(e) {
+      e.preventDefault();
+      trySetDir(0, 1);
+    }
+  }, "⬇")), gameStage !== "complete" && /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    type: "button",
+    onClick: handleClose
+  }, "Close")));
+}
+
 /* ================= APP ================= */
 function App() {
   var initial = useMemo(function () {
     return loadState();
   }, []);
-  var _useState19 = useState(initial.kid),
-    _useState20 = _slicedToArray(_useState19, 2),
-    kid = _useState20[0],
-    setKid = _useState20[1];
-  var _useState21 = useState(initial.coins),
-    _useState22 = _slicedToArray(_useState21, 2),
-    coins = _useState22[0],
-    setCoins = _useState22[1];
-  var _useState23 = useState(initial.log),
-    _useState24 = _slicedToArray(_useState23, 2),
-    log = _useState24[0],
-    setLog = _useState24[1];
-  var _useState25 = useState(initial.unlocks),
-    _useState26 = _slicedToArray(_useState25, 2),
-    unlocks = _useState26[0],
-    setUnlocks = _useState26[1];
-  var _useState27 = useState(initial.boosts),
-    _useState28 = _slicedToArray(_useState27, 2),
-    boosts = _useState28[0],
-    setBoosts = _useState28[1];
-  var _useState29 = useState(initial.settings || defaultSettings()),
-    _useState30 = _slicedToArray(_useState29, 2),
-    settings = _useState30[0],
-    setSettings = _useState30[1];
-  var _useState31 = useState(initial.pendingReward || null),
-    _useState32 = _slicedToArray(_useState31, 2),
-    pendingReward = _useState32[0],
-    setPendingReward = _useState32[1];
-  var _useState33 = useState(null),
-    _useState34 = _slicedToArray(_useState33, 2),
-    modal = _useState34[0],
-    setModal = _useState34[1]; // vault | timer | history | settings | profile | unlock | coinDrop
-  var _useState35 = useState([]),
-    _useState36 = _slicedToArray(_useState35, 2),
-    unlockQueue = _useState36[0],
-    setUnlockQueue = _useState36[1];
-  var unlockQueueRef = useRef([]);
-  var _useState37 = useState(null),
+  var _useState37 = useState(initial.kid),
     _useState38 = _slicedToArray(_useState37, 2),
-    timerJob = _useState38[0],
-    setTimerJob = _useState38[1];
-  var _useState39 = useState(120),
+    kid = _useState38[0],
+    setKid = _useState38[1];
+  var _useState39 = useState(initial.coins),
     _useState40 = _slicedToArray(_useState39, 2),
-    secs = _useState40[0],
-    setSecs = _useState40[1];
-  var _useState41 = useState(false),
+    coins = _useState40[0],
+    setCoins = _useState40[1];
+  var _useState41 = useState(initial.log),
     _useState42 = _slicedToArray(_useState41, 2),
-    running = _useState42[0],
-    setRunning = _useState42[1];
-  var _useState43 = useState(false),
+    log = _useState42[0],
+    setLog = _useState42[1];
+  var _useState43 = useState(initial.unlocks),
     _useState44 = _slicedToArray(_useState43, 2),
-    done = _useState44[0],
-    setDone = _useState44[1];
-  var _useState45 = useState(null),
+    unlocks = _useState44[0],
+    setUnlocks = _useState44[1];
+  var _useState45 = useState(initial.boosts),
     _useState46 = _slicedToArray(_useState45, 2),
-    toast = _useState46[0],
-    setToast = _useState46[1];
-  var _useState47 = useState(supabaseReady() ? "syncing" : "local"),
+    boosts = _useState46[0],
+    setBoosts = _useState46[1];
+  var _useState47 = useState(initial.settings || defaultSettings()),
     _useState48 = _slicedToArray(_useState47, 2),
-    cloud = _useState48[0],
-    setCloud = _useState48[1];
-  var _useState49 = useState(null),
+    settings = _useState48[0],
+    setSettings = _useState48[1];
+  var _useState49 = useState(initial.pendingReward || null),
     _useState50 = _slicedToArray(_useState49, 2),
-    focusedRow = _useState50[0],
-    setFocusedRow = _useState50[1];
+    pendingReward = _useState50[0],
+    setPendingReward = _useState50[1];
+  var _useState51 = useState(null),
+    _useState52 = _slicedToArray(_useState51, 2),
+    modal = _useState52[0],
+    setModal = _useState52[1]; // vault | timer | history | settings | profile | unlock | coinDrop
+  var _useState53 = useState([]),
+    _useState54 = _slicedToArray(_useState53, 2),
+    unlockQueue = _useState54[0],
+    setUnlockQueue = _useState54[1];
+  var unlockQueueRef = useRef([]);
+  var _useState55 = useState(null),
+    _useState56 = _slicedToArray(_useState55, 2),
+    timerJob = _useState56[0],
+    setTimerJob = _useState56[1];
+  var _useState57 = useState(120),
+    _useState58 = _slicedToArray(_useState57, 2),
+    secs = _useState58[0],
+    setSecs = _useState58[1];
+  var _useState59 = useState(false),
+    _useState60 = _slicedToArray(_useState59, 2),
+    running = _useState60[0],
+    setRunning = _useState60[1];
+  var _useState61 = useState(false),
+    _useState62 = _slicedToArray(_useState61, 2),
+    done = _useState62[0],
+    setDone = _useState62[1];
+  var _useState63 = useState(null),
+    _useState64 = _slicedToArray(_useState63, 2),
+    toast = _useState64[0],
+    setToast = _useState64[1];
+  var _useState65 = useState(supabaseReady() ? "syncing" : "local"),
+    _useState66 = _slicedToArray(_useState65, 2),
+    cloud = _useState66[0],
+    setCloud = _useState66[1];
+  var _useState67 = useState(null),
+    _useState68 = _slicedToArray(_useState67, 2),
+    focusedRow = _useState68[0],
+    setFocusedRow = _useState68[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -2843,7 +3379,7 @@ function App() {
   var completePendingReward = function completePendingReward(reward) {
     try {
       if (!reward || reward.awarded) return Promise.resolve(null);
-      if (reward.source === "test-drop") {
+      if (reward.source === "test-drop" || reward.source === "test-chase") {
         if (reward.rewardId) awardedRewardIdsRef.current[reward.rewardId] = true;
         markPendingAwarded(reward);
         return Promise.resolve({
@@ -2877,7 +3413,7 @@ function App() {
         kidId: slug,
         rewardId: reward.rewardId,
         deferCelebration: true,
-        quiet: modal === "coinDrop"
+        quiet: modal === "coinDrop" || modal === "coinChase"
       });
       markPendingAwarded(reward);
       return Promise.resolve(result);
@@ -2899,8 +3435,8 @@ function App() {
   };
   var launchTestCoinDrop = function launchTestCoinDrop() {
     var pending = pendingRewardRef.current || pendingReward;
-    if (pending && !pending.awarded && pending.source !== "test-drop") {
-      flash("Finish the open coin drop first");
+    if (pending && !pending.awarded && pending.source !== "test-drop" && pending.source !== "test-chase") {
+      flash("Finish the open coin game first");
       return;
     }
     var reward = {
@@ -2917,6 +3453,27 @@ function App() {
     deferUnlockModalRef.current = true;
     setModal("coinDrop");
     flash("Test drop — practice only");
+  };
+  var launchTestCoinChase = function launchTestCoinChase() {
+    var pending = pendingRewardRef.current || pendingReward;
+    if (pending && !pending.awarded && pending.source !== "test-drop" && pending.source !== "test-chase") {
+      flash("Finish the open coin game first");
+      return;
+    }
+    var reward = {
+      rewardId: makeRewardId(),
+      kidId: kid,
+      amount: 1,
+      description: "Test Coin Chase",
+      source: "test-chase",
+      createdAt: new Date().toISOString(),
+      awarded: false
+    };
+    pendingRewardRef.current = reward;
+    setPendingReward(reward);
+    deferUnlockModalRef.current = true;
+    setModal("coinChase");
+    flash("Test chase — practice only");
   };
   var finishCoinDropFlow = function finishCoinDropFlow() {
     deferUnlockModalRef.current = false;
@@ -2983,7 +3540,13 @@ function App() {
         pendingRewardRef.current = reward;
         setPendingReward(reward);
         deferUnlockModalRef.current = true;
-        setModal("coinDrop");
+        var nextGame = settings.lastBrushGame === "coinChase" ? "coinChase" : "coinDrop";
+        setSettings(function (s) {
+          return Object.assign({}, s, {
+            lastBrushGame: nextGame === "coinDrop" ? "coinChase" : "coinDrop"
+          });
+        });
+        setModal(nextGame);
         return;
       }
       tune.fanfare();
@@ -3154,10 +3717,10 @@ function App() {
     setFocusedRow(null);
   };
   var vaultRef = useRef(null);
-  var _useState51 = useState(false),
-    _useState52 = _slicedToArray(_useState51, 2),
-    pinKid = _useState52[0],
-    setPinKid = _useState52[1];
+  var _useState69 = useState(false),
+    _useState70 = _slicedToArray(_useState69, 2),
+    pinKid = _useState70[0],
+    setPinKid = _useState70[1];
   useEffect(function () {
     var el = vaultRef.current;
     if (!el) return;
@@ -3724,6 +4287,14 @@ function App() {
     awardReward: completePendingReward,
     onComplete: handleCoinDropComplete,
     onClose: handleCoinDropComplete
+  }), modal === "coinChase" && pendingReward && /*#__PURE__*/React.createElement(CoinChaseGame, {
+    kid: Object.assign({}, KIDS[pendingReward.kidId] || K, {
+      id: pendingReward.kidId || kid
+    }),
+    reward: pendingReward,
+    awardReward: completePendingReward,
+    onComplete: handleCoinDropComplete,
+    onClose: handleCoinDropComplete
   }), modal === "history" && /*#__PURE__*/React.createElement("div", {
     className: "modal",
     onClick: function onClick() {
@@ -3953,7 +4524,7 @@ function App() {
         });
       });
     }
-  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Brushing Coin Drop Game"), /*#__PURE__*/React.createElement("em", null, "After brushing, play a short drop game. Aim for the vault — coin is always kept."))), /*#__PURE__*/React.createElement("label", {
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Brushing reward games"), /*#__PURE__*/React.createElement("em", null, "After brushing, alternate Coin Drop and Coin Chase. Coin is always kept."))), /*#__PURE__*/React.createElement("label", {
     className: "settings-toggle"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -3975,6 +4546,15 @@ function App() {
       marginTop: "-4px"
     }
   }, "Practice only — opens Coin Drop now, does not add coins."), /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    type: "button",
+    onClick: launchTestCoinChase
+  }, "▶ Play test chase (", K.name, ")"), /*#__PURE__*/React.createElement("div", {
+    className: "settings-note",
+    style: {
+      marginTop: "-4px"
+    }
+  }, "Practice only — opens Coin Chase now, does not add coins."), /*#__PURE__*/React.createElement("button", {
     className: "btn undo",
     onClick: undoLast,
     disabled: !log[kid].length
