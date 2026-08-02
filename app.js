@@ -1021,8 +1021,12 @@ function cdZoneLabel(zone) {
   return "SUPER DROP!";
 }
 function cdZoneSub(zone) {
-  if (zone === "vault") return "Straight into the vault!";
-  return "Still got your coin!";
+  if (zone === "vault") return "Well done — straight into the vault!";
+  return "Better luck next time — you still keep your coin!";
+}
+function cdZoneCheer(zone) {
+  if (zone === "vault") return "Well done!";
+  return "Nice try!";
 }
 function cdZoneIsVault(zone) {
   return zone === "vault";
@@ -1096,18 +1100,22 @@ function CoinDropGame(props) {
     _useState0 = _slicedToArray(_useState9, 2),
     resultSub = _useState0[0],
     setResultSub = _useState0[1];
-  var _useState1 = useState(false),
+  var _useState1 = useState(null),
     _useState10 = _slicedToArray(_useState1, 2),
-    resultVault = _useState10[0],
-    setResultVault = _useState10[1];
-  var _useState11 = useState(null),
+    resultCheer = _useState10[0],
+    setResultCheer = _useState10[1];
+  var _useState11 = useState(false),
     _useState12 = _slicedToArray(_useState11, 2),
-    resultAmount = _useState12[0],
-    setResultAmount = _useState12[1];
-  var _useState13 = useState(false),
+    resultVault = _useState12[0],
+    setResultVault = _useState12[1];
+  var _useState13 = useState(null),
     _useState14 = _slicedToArray(_useState13, 2),
-    boostFlash = _useState14[0],
-    setBoostFlash = _useState14[1];
+    resultAmount = _useState14[0],
+    setResultAmount = _useState14[1];
+  var _useState15 = useState(false),
+    _useState16 = _slicedToArray(_useState15, 2),
+    boostFlash = _useState16[0],
+    setBoostFlash = _useState16[1];
   var drawBoard = function drawBoard(ctx, coin, movers, particles, bobY) {
     var g = ctx.createLinearGradient(0, 0, 0, CD_H);
     g.addColorStop(0, "#1a3fa0");
@@ -1261,6 +1269,7 @@ function CoinDropGame(props) {
     setGameStage("landed");
     setResultText(cdZoneLabel(zone));
     setResultSub(cdZoneSub(zone));
+    setResultCheer(cdZoneCheer(zone));
     setResultVault(isVault);
     playCoinSfx(isVault ? "vault" : "side", true);
     try {
@@ -1286,14 +1295,12 @@ function CoinDropGame(props) {
       setBoostFlash(!!(result && result.boostApplied));
       setTimeout(function () {
         setGameStage("complete");
-        onComplete(zone, result || null);
-      }, isVault ? 1100 : 900);
+      }, isVault ? 700 : 550);
     }).catch(function () {
       setResultAmount(reward.amount || 1);
       setTimeout(function () {
         setGameStage("complete");
-        onComplete(zone, null);
-      }, isVault ? 1100 : 900);
+      }, isVault ? 700 : 550);
     });
   };
   var reflectCircle = function reflectCircle(coin, cx, cy, rad) {
@@ -1555,8 +1562,16 @@ function CoinDropGame(props) {
       onComplete("vault", null);
     });
   };
+  var dismissResult = function dismissResult() {
+    onComplete(resultVault ? "vault" : "side", awardResultRef.current);
+  };
   var steerHint = tiltUnavailable || !tiltAllowedSetting ? "Drag the board or tap ◀ ▶ to steer" : "Tilt the phone, or use drag / ◀ ▶";
-  var instruct = gameStage === "ready" ? "Aim for the VAULT — you keep your coin either way" : steerHint;
+  var isPractice = !!(reward && reward.source === "test-drop");
+  var showResult = gameStage === "landed" || gameStage === "complete";
+  var headTitle = "You earned a coin!";
+  if (reward && reward.source === "powerup-extra-drop") headTitle = "Bonus Drop!";else if (isPractice) headTitle = "Test Drop!";
+  if (showResult && resultCheer) headTitle = resultCheer;
+  var instruct = gameStage === "ready" ? "Aim for the VAULT — you keep your coin either way" : gameStage === "complete" ? resultVault ? "Tap Done when you're ready" : "You still keep your coin — tap Done" : steerHint;
   return /*#__PURE__*/React.createElement("div", {
     className: "modal coin-drop-modal"
   }, /*#__PURE__*/React.createElement("div", {
@@ -1568,7 +1583,7 @@ function CoinDropGame(props) {
     className: "coin-drop-head"
   }, /*#__PURE__*/React.createElement("h2", {
     className: "comic"
-  }, reward && reward.source === "powerup-extra-drop" ? "Bonus Drop!" : reward && reward.source === "test-drop" ? "Test Drop!" : "You earned a coin!"), /*#__PURE__*/React.createElement("p", {
+  }, headTitle), /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
   }, instruct), (tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-toast"
@@ -1592,7 +1607,7 @@ function CoinDropGame(props) {
     className: "coin-drop-rules-title"
   }, "How to play"), /*#__PURE__*/React.createElement("ol", {
     className: "coin-drop-rules-list"
-  }, /*#__PURE__*/React.createElement("li", null, "Steer with tilt, drag, or the arrows"), /*#__PURE__*/React.createElement("li", null, "Aim for the gold ", /*#__PURE__*/React.createElement("strong", null, "VAULT"), " in the middle"), /*#__PURE__*/React.createElement("li", null, "Sides still count — you always keep your coin"))), gameStage === "landed" || gameStage === "complete" ? /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("li", null, "Steer with tilt, drag, or the arrows"), /*#__PURE__*/React.createElement("li", null, "Aim for the gold ", /*#__PURE__*/React.createElement("strong", null, "VAULT"), " in the middle"), /*#__PURE__*/React.createElement("li", null, "Sides still count — you always keep your coin"))), showResult ? /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-result" + (resultVault ? " is-vault" : " is-side")
   }, /*#__PURE__*/React.createElement("div", {
     className: "comic burst-label"
@@ -1600,7 +1615,7 @@ function CoinDropGame(props) {
     className: "coin-drop-sub"
   }, resultSub), boostFlash && /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-boost"
-  }, "2× POWER-UP!"), reward && reward.source === "test-drop" ? /*#__PURE__*/React.createElement("div", {
+  }, "2× POWER-UP!"), isPractice ? /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-amt coin-drop-practice"
   }, "Practice — no coins added") : resultAmount != null && /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-amt"
@@ -1608,7 +1623,11 @@ function CoinDropGame(props) {
     className: "btn go coin-drop-start",
     type: "button",
     onClick: enableTiltAndStart
-  }, "Drop Coin"), /*#__PURE__*/React.createElement("div", {
+  }, "Drop Coin"), gameStage === "complete" ? /*#__PURE__*/React.createElement("button", {
+    className: "btn go coin-drop-done",
+    type: "button",
+    onClick: dismissResult
+  }, resultVault ? "Awesome — Done!" : "Done") : /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-controls"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
@@ -1644,7 +1663,7 @@ function CoinDropGame(props) {
     onPointerCancel: function onPointerCancel() {
       buttonSteerRef.current = 0;
     }
-  }, "RIGHT ▶")), /*#__PURE__*/React.createElement("button", {
+  }, "RIGHT ▶")), gameStage !== "complete" && /*#__PURE__*/React.createElement("button", {
     className: "btn close",
     type: "button",
     onClick: handleClose
@@ -1656,67 +1675,67 @@ function App() {
   var initial = useMemo(function () {
     return loadState();
   }, []);
-  var _useState15 = useState(initial.kid),
-    _useState16 = _slicedToArray(_useState15, 2),
-    kid = _useState16[0],
-    setKid = _useState16[1];
-  var _useState17 = useState(initial.coins),
+  var _useState17 = useState(initial.kid),
     _useState18 = _slicedToArray(_useState17, 2),
-    coins = _useState18[0],
-    setCoins = _useState18[1];
-  var _useState19 = useState(initial.log),
+    kid = _useState18[0],
+    setKid = _useState18[1];
+  var _useState19 = useState(initial.coins),
     _useState20 = _slicedToArray(_useState19, 2),
-    log = _useState20[0],
-    setLog = _useState20[1];
-  var _useState21 = useState(initial.unlocks),
+    coins = _useState20[0],
+    setCoins = _useState20[1];
+  var _useState21 = useState(initial.log),
     _useState22 = _slicedToArray(_useState21, 2),
-    unlocks = _useState22[0],
-    setUnlocks = _useState22[1];
-  var _useState23 = useState(initial.boosts),
+    log = _useState22[0],
+    setLog = _useState22[1];
+  var _useState23 = useState(initial.unlocks),
     _useState24 = _slicedToArray(_useState23, 2),
-    boosts = _useState24[0],
-    setBoosts = _useState24[1];
-  var _useState25 = useState(initial.settings || defaultSettings()),
+    unlocks = _useState24[0],
+    setUnlocks = _useState24[1];
+  var _useState25 = useState(initial.boosts),
     _useState26 = _slicedToArray(_useState25, 2),
-    settings = _useState26[0],
-    setSettings = _useState26[1];
-  var _useState27 = useState(initial.pendingReward || null),
+    boosts = _useState26[0],
+    setBoosts = _useState26[1];
+  var _useState27 = useState(initial.settings || defaultSettings()),
     _useState28 = _slicedToArray(_useState27, 2),
-    pendingReward = _useState28[0],
-    setPendingReward = _useState28[1];
-  var _useState29 = useState(null),
+    settings = _useState28[0],
+    setSettings = _useState28[1];
+  var _useState29 = useState(initial.pendingReward || null),
     _useState30 = _slicedToArray(_useState29, 2),
-    modal = _useState30[0],
-    setModal = _useState30[1]; // vault | timer | history | settings | profile | unlock | coinDrop
-  var _useState31 = useState([]),
+    pendingReward = _useState30[0],
+    setPendingReward = _useState30[1];
+  var _useState31 = useState(null),
     _useState32 = _slicedToArray(_useState31, 2),
-    unlockQueue = _useState32[0],
-    setUnlockQueue = _useState32[1];
-  var unlockQueueRef = useRef([]);
-  var _useState33 = useState(null),
+    modal = _useState32[0],
+    setModal = _useState32[1]; // vault | timer | history | settings | profile | unlock | coinDrop
+  var _useState33 = useState([]),
     _useState34 = _slicedToArray(_useState33, 2),
-    timerJob = _useState34[0],
-    setTimerJob = _useState34[1];
-  var _useState35 = useState(120),
+    unlockQueue = _useState34[0],
+    setUnlockQueue = _useState34[1];
+  var unlockQueueRef = useRef([]);
+  var _useState35 = useState(null),
     _useState36 = _slicedToArray(_useState35, 2),
-    secs = _useState36[0],
-    setSecs = _useState36[1];
-  var _useState37 = useState(false),
+    timerJob = _useState36[0],
+    setTimerJob = _useState36[1];
+  var _useState37 = useState(120),
     _useState38 = _slicedToArray(_useState37, 2),
-    running = _useState38[0],
-    setRunning = _useState38[1];
+    secs = _useState38[0],
+    setSecs = _useState38[1];
   var _useState39 = useState(false),
     _useState40 = _slicedToArray(_useState39, 2),
-    done = _useState40[0],
-    setDone = _useState40[1];
-  var _useState41 = useState(null),
+    running = _useState40[0],
+    setRunning = _useState40[1];
+  var _useState41 = useState(false),
     _useState42 = _slicedToArray(_useState41, 2),
-    toast = _useState42[0],
-    setToast = _useState42[1];
-  var _useState43 = useState(supabaseReady() ? "syncing" : "local"),
+    done = _useState42[0],
+    setDone = _useState42[1];
+  var _useState43 = useState(null),
     _useState44 = _slicedToArray(_useState43, 2),
-    cloud = _useState44[0],
-    setCloud = _useState44[1];
+    toast = _useState44[0],
+    setToast = _useState44[1];
+  var _useState45 = useState(supabaseReady() ? "syncing" : "local"),
+    _useState46 = _slicedToArray(_useState45, 2),
+    cloud = _useState46[0],
+    setCloud = _useState46[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -2638,12 +2657,20 @@ function App() {
     pendingRewardRef.current = null;
     setPendingReward(null);
   };
+  var markPendingAwarded = function markPendingAwarded(reward) {
+    var marked = Object.assign({}, reward, {
+      awarded: true
+    });
+    pendingRewardRef.current = marked;
+    setPendingReward(marked);
+    return marked;
+  };
   var completePendingReward = function completePendingReward(reward) {
     try {
       if (!reward || reward.awarded) return Promise.resolve(null);
       if (reward.source === "test-drop") {
         if (reward.rewardId) awardedRewardIdsRef.current[reward.rewardId] = true;
-        clearPendingReward();
+        markPendingAwarded(reward);
         return Promise.resolve({
           amountAwarded: 0,
           boostApplied: false,
@@ -2677,7 +2704,7 @@ function App() {
         deferCelebration: true,
         quiet: modal === "coinDrop"
       });
-      clearPendingReward();
+      markPendingAwarded(reward);
       return Promise.resolve(result);
     } catch (err) {
       try {
@@ -2687,7 +2714,7 @@ function App() {
           rewardId: reward && reward.rewardId,
           deferCelebration: true
         });
-        clearPendingReward();
+        if (reward) markPendingAwarded(reward);else clearPendingReward();
         return Promise.resolve(fallback);
       } catch (e2) {
         clearPendingReward();

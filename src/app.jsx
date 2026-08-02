@@ -647,8 +647,13 @@ function cdZoneLabel(zone){
 }
 
 function cdZoneSub(zone){
-  if(zone === "vault") return "Straight into the vault!";
-  return "Still got your coin!";
+  if(zone === "vault") return "Well done — straight into the vault!";
+  return "Better luck next time — you still keep your coin!";
+}
+
+function cdZoneCheer(zone){
+  if(zone === "vault") return "Well done!";
+  return "Nice try!";
 }
 
 function cdZoneIsVault(zone){
@@ -694,6 +699,7 @@ function CoinDropGame(props){
   const [tiltUnavailable, setTiltUnavailable] = useState(false);
   const [resultText, setResultText] = useState(null);
   const [resultSub, setResultSub] = useState(null);
+  const [resultCheer, setResultCheer] = useState(null);
   const [resultVault, setResultVault] = useState(false);
   const [resultAmount, setResultAmount] = useState(null);
   const [boostFlash, setBoostFlash] = useState(false);
@@ -866,6 +872,7 @@ function CoinDropGame(props){
     setGameStage("landed");
     setResultText(cdZoneLabel(zone));
     setResultSub(cdZoneSub(zone));
+    setResultCheer(cdZoneCheer(zone));
     setResultVault(isVault);
     playCoinSfx(isVault ? "vault" : "side", true);
     try{
@@ -895,14 +902,12 @@ function CoinDropGame(props){
       setBoostFlash(!!(result && result.boostApplied));
       setTimeout(function(){
         setGameStage("complete");
-        onComplete(zone, result || null);
-      }, isVault ? 1100 : 900);
+      }, isVault ? 700 : 550);
     }).catch(function(){
       setResultAmount(reward.amount || 1);
       setTimeout(function(){
         setGameStage("complete");
-        onComplete(zone, null);
-      }, isVault ? 1100 : 900);
+      }, isVault ? 700 : 550);
     });
   };
 
@@ -1189,25 +1194,33 @@ function CoinDropGame(props){
     });
   };
 
+  const dismissResult = function(){
+    onComplete(resultVault ? "vault" : "side", awardResultRef.current);
+  };
+
   const steerHint = tiltUnavailable || !tiltAllowedSetting
     ? "Drag the board or tap ◀ ▶ to steer"
     : "Tilt the phone, or use drag / ◀ ▶";
 
+  const isPractice = !!(reward && reward.source === "test-drop");
+  const showResult = gameStage === "landed" || gameStage === "complete";
+
+  let headTitle = "You earned a coin!";
+  if(reward && reward.source === "powerup-extra-drop") headTitle = "Bonus Drop!";
+  else if(isPractice) headTitle = "Test Drop!";
+  if(showResult && resultCheer) headTitle = resultCheer;
+
   const instruct = gameStage === "ready"
     ? "Aim for the VAULT — you keep your coin either way"
-    : steerHint;
+    : gameStage === "complete"
+      ? (resultVault ? "Tap Done when you're ready" : "You still keep your coin — tap Done")
+      : steerHint;
 
   return (
     <div className="modal coin-drop-modal">
       <div className={"coin-drop-sheet kid-"+kid.id} onClick={function(e){ e.stopPropagation(); }}>
         <div className="coin-drop-head">
-          <h2 className="comic">
-            {reward && reward.source === "powerup-extra-drop"
-              ? "Bonus Drop!"
-              : reward && reward.source === "test-drop"
-                ? "Test Drop!"
-                : "You earned a coin!"}
-          </h2>
+          <h2 className="comic">{headTitle}</h2>
           <p className="coin-drop-instructions">{instruct}</p>
           {(tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && (
             <p className="coin-drop-toast">Tilt unavailable · Drag or use the arrows</p>
@@ -1239,12 +1252,12 @@ function CoinDropGame(props){
               </ol>
             </div>
           )}
-          {gameStage === "landed" || gameStage === "complete" ? (
+          {showResult ? (
             <div className={"coin-drop-result" + (resultVault ? " is-vault" : " is-side")}>
               <div className="comic burst-label">{resultText || "SUPER DROP!"}</div>
               {resultSub && <div className="coin-drop-sub">{resultSub}</div>}
               {boostFlash && <div className="coin-drop-boost">2× POWER-UP!</div>}
-              {reward && reward.source === "test-drop"
+              {isPractice
                 ? <div className="coin-drop-amt coin-drop-practice">Practice — no coins added</div>
                 : resultAmount != null && <div className="coin-drop-amt">+{resultAmount} coin{resultAmount === 1 ? "" : "s"}</div>}
             </div>
@@ -1257,28 +1270,36 @@ function CoinDropGame(props){
           </button>
         )}
 
-        <div className="coin-drop-controls">
-          <button
-            type="button"
-            className="coin-drop-arrow"
-            aria-label="Steer coin left"
-            onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = -1; }}
-            onPointerUp={function(){ buttonSteerRef.current = 0; }}
-            onPointerLeave={function(){ buttonSteerRef.current = 0; }}
-            onPointerCancel={function(){ buttonSteerRef.current = 0; }}
-          >◀ LEFT</button>
-          <button
-            type="button"
-            className="coin-drop-arrow"
-            aria-label="Steer coin right"
-            onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = 1; }}
-            onPointerUp={function(){ buttonSteerRef.current = 0; }}
-            onPointerLeave={function(){ buttonSteerRef.current = 0; }}
-            onPointerCancel={function(){ buttonSteerRef.current = 0; }}
-          >RIGHT ▶</button>
-        </div>
+        {gameStage === "complete" ? (
+          <button className="btn go coin-drop-done" type="button" onClick={dismissResult}>
+            {resultVault ? "Awesome — Done!" : "Done"}
+          </button>
+        ) : (
+          <div className="coin-drop-controls">
+            <button
+              type="button"
+              className="coin-drop-arrow"
+              aria-label="Steer coin left"
+              onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = -1; }}
+              onPointerUp={function(){ buttonSteerRef.current = 0; }}
+              onPointerLeave={function(){ buttonSteerRef.current = 0; }}
+              onPointerCancel={function(){ buttonSteerRef.current = 0; }}
+            >◀ LEFT</button>
+            <button
+              type="button"
+              className="coin-drop-arrow"
+              aria-label="Steer coin right"
+              onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = 1; }}
+              onPointerUp={function(){ buttonSteerRef.current = 0; }}
+              onPointerLeave={function(){ buttonSteerRef.current = 0; }}
+              onPointerCancel={function(){ buttonSteerRef.current = 0; }}
+            >RIGHT ▶</button>
+          </div>
+        )}
 
-        <button className="btn close" type="button" onClick={handleClose}>Close</button>
+        {gameStage !== "complete" && (
+          <button className="btn close" type="button" onClick={handleClose}>Close</button>
+        )}
       </div>
     </div>
   );
@@ -2169,12 +2190,19 @@ function App(){
     setPendingReward(null);
   };
 
+  const markPendingAwarded = function(reward){
+    const marked = Object.assign({}, reward, {awarded: true});
+    pendingRewardRef.current = marked;
+    setPendingReward(marked);
+    return marked;
+  };
+
   const completePendingReward = function(reward){
     try{
       if(!reward || reward.awarded) return Promise.resolve(null);
       if(reward.source === "test-drop"){
         if(reward.rewardId) awardedRewardIdsRef.current[reward.rewardId] = true;
-        clearPendingReward();
+        markPendingAwarded(reward);
         return Promise.resolve({amountAwarded:0, boostApplied:false, practice:true});
       }
       const slug = reward.kidId;
@@ -2202,7 +2230,7 @@ function App(){
           quiet: modal === "coinDrop"
         }
       );
-      clearPendingReward();
+      markPendingAwarded(reward);
       return Promise.resolve(result);
     }catch(err){
       try{
@@ -2217,7 +2245,8 @@ function App(){
             deferCelebration: true
           }
         );
-        clearPendingReward();
+        if(reward) markPendingAwarded(reward);
+        else clearPendingReward();
         return Promise.resolve(fallback);
       }catch(e2){
         clearPendingReward();
