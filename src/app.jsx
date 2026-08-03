@@ -1501,31 +1501,7 @@ const CC_OX = (CC_W - CC_COLS * CC_CELL) / 2;
 const CC_OY = 28;
 const CC_SPEED = 2.6;
 const CC_TIME_SEC = 35;
-/* 1 = wall, 0 = path. Start at (5,1). Coins on selected path cells. */
-const CC_MAZE = [
-  [1,1,1,1,1,1,1,1,1,1,1],
-  [1,0,0,0,0,0,0,0,0,0,1],
-  [1,0,1,1,1,0,1,1,1,0,1],
-  [1,0,0,0,0,0,0,0,0,0,1],
-  [1,0,1,0,1,1,1,0,1,0,1],
-  [1,0,1,0,0,0,0,0,1,0,1],
-  [1,0,1,1,1,0,1,1,1,0,1],
-  [1,0,0,0,0,0,0,0,0,0,1],
-  [1,0,1,0,1,1,1,0,1,0,1],
-  [1,0,0,0,0,0,0,0,0,0,1],
-  [1,0,1,1,0,1,0,1,1,0,1],
-  [1,0,0,0,0,0,0,0,0,0,1],
-  [1,1,1,1,1,1,1,1,1,1,1]
-];
-const CC_START = {c:5, r:1};
-const CC_COIN_CELLS = [
-  [1,1],[3,1],[7,1],[9,1],
-  [1,3],[5,3],[9,3],
-  [3,5],[7,5],
-  [1,7],[5,7],[9,7],
-  [3,9],[7,9],
-  [1,11],[5,11],[9,11]
-];
+const CC_COIN_TARGET = 14;
 
 function ccCellCenter(c, r){
   return {
@@ -1534,9 +1510,114 @@ function ccCellCenter(c, r){
   };
 }
 
-function ccIsWall(c, r){
+function ccIsWall(maze, c, r){
   if(r < 0 || c < 0 || r >= CC_ROWS || c >= CC_COLS) return true;
-  return CC_MAZE[r][c] === 1;
+  return maze[r][c] === 1;
+}
+
+function ccShuffleInPlace(arr){
+  for(var i = arr.length - 1; i > 0; i--){
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
+function ccReachableCells(maze, startC, startR){
+  var seen = {};
+  var out = [];
+  var q = [{c:startC, r:startR}];
+  seen[startC + "," + startR] = true;
+  var dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+  while(q.length){
+    var p = q.shift();
+    out.push(p);
+    for(var k = 0; k < 4; k++){
+      var nc = p.c + dirs[k][0];
+      var nr = p.r + dirs[k][1];
+      if(ccIsWall(maze, nc, nr)) continue;
+      var key = nc + "," + nr;
+      if(seen[key]) continue;
+      seen[key] = true;
+      q.push({c:nc, r:nr});
+    }
+  }
+  return out;
+}
+
+/* Fresh maze + coin set each play (recursive backtracker + a few loops). */
+function ccGenerateLayout(){
+  var maze = [];
+  var r, c, i;
+  for(r = 0; r < CC_ROWS; r++){
+    maze[r] = [];
+    for(c = 0; c < CC_COLS; c++) maze[r][c] = 1;
+  }
+  for(r = 1; r < CC_ROWS; r += 2){
+    for(c = 1; c < CC_COLS; c += 2) maze[r][c] = 0;
+  }
+
+  var startC = 5;
+  var startR = 1;
+  var stack = [{c:startC, r:startR}];
+  var visited = {};
+  visited[startC + "," + startR] = true;
+  var stepDirs = [[0,-2],[0,2],[-2,0],[2,0]];
+
+  while(stack.length){
+    var cur = stack[stack.length - 1];
+    var opts = [];
+    for(i = 0; i < stepDirs.length; i++){
+      var nc = cur.c + stepDirs[i][0];
+      var nr = cur.r + stepDirs[i][1];
+      if(nr < 1 || nc < 1 || nr >= CC_ROWS - 1 || nc >= CC_COLS - 1) continue;
+      if(visited[nc + "," + nr]) continue;
+      opts.push({c:nc, r:nr, dc:stepDirs[i][0], dr:stepDirs[i][1]});
+    }
+    if(!opts.length){
+      stack.pop();
+      continue;
+    }
+    ccShuffleInPlace(opts);
+    var next = opts[0];
+    maze[cur.r + next.dr / 2][cur.c + next.dc / 2] = 0;
+    maze[next.r][next.c] = 0;
+    visited[next.c + "," + next.r] = true;
+    stack.push({c:next.c, r:next.r});
+  }
+
+  var extras = 5 + Math.floor(Math.random() * 6);
+  for(i = 0; i < extras; i++){
+    var er = 2 + Math.floor(Math.random() * (CC_ROWS - 4));
+    var ec = 2 + Math.floor(Math.random() * (CC_COLS - 4));
+    if(maze[er][ec] !== 1) continue;
+    var openN =
+      (maze[er - 1][ec] === 0 ? 1 : 0) +
+      (maze[er + 1][ec] === 0 ? 1 : 0) +
+      (maze[er][ec - 1] === 0 ? 1 : 0) +
+      (maze[er][ec + 1] === 0 ? 1 : 0);
+    if(openN >= 2) maze[er][ec] = 0;
+  }
+
+  var reach = ccReachableCells(maze, startC, startR);
+  var candidates = reach.filter(function(p){
+    return !(p.c === startC && p.r === startR);
+  });
+  ccShuffleInPlace(candidates);
+  var coinCount = Math.min(CC_COIN_TARGET, candidates.length);
+  if(coinCount < 8 && candidates.length >= 8) coinCount = 8;
+  var coins = [];
+  for(i = 0; i < coinCount; i++){
+    coins.push([candidates[i].c, candidates[i].r]);
+  }
+
+  return {
+    maze: maze,
+    start: {c:startC, r:startR},
+    coins: coins
+  };
 }
 
 function CoinChaseGame(props){
@@ -1546,16 +1627,19 @@ function CoinChaseGame(props){
   const onClose = props.onClose;
   const awardReward = props.awardReward;
 
+  const [layout] = useState(function(){ return ccGenerateLayout(); });
+  const mazeRef = useRef(layout.maze);
+
   const canvasRef = useRef(null);
   const playerRef = useRef({
-    c: CC_START.c,
-    r: CC_START.r,
-    x: ccCellCenter(CC_START.c, CC_START.r).x,
-    y: ccCellCenter(CC_START.c, CC_START.r).y,
+    c: layout.start.c,
+    r: layout.start.r,
+    x: ccCellCenter(layout.start.c, layout.start.r).x,
+    y: ccCellCenter(layout.start.c, layout.start.r).y,
     dir: {dc:0, dr:0},
     nextDir: {dc:0, dr:0}
   });
-  const coinsRef = useRef(CC_COIN_CELLS.map(function(pair){
+  const coinsRef = useRef(layout.coins.map(function(pair){
     return {c:pair[0], r:pair[1], taken:false};
   }));
   const animationFrameRef = useRef(0);
@@ -1570,7 +1654,7 @@ function CoinChaseGame(props){
   const playingRef = useRef(false);
 
   const [gameStage, setGameStage] = useState("ready");
-  const [coinsLeft, setCoinsLeft] = useState(CC_COIN_CELLS.length);
+  const [coinsLeft, setCoinsLeft] = useState(layout.coins.length);
   const [secsLeft, setSecsLeft] = useState(CC_TIME_SEC);
   const [resultWon, setResultWon] = useState(false);
   const [resultText, setResultText] = useState(null);
@@ -1585,6 +1669,7 @@ function CoinChaseGame(props){
     const theme = themeRef.current;
     const player = playerRef.current;
     const coins = coinsRef.current;
+    const maze = mazeRef.current;
     const g = ctx.createLinearGradient(0, 0, 0, CC_H);
     g.addColorStop(0, theme.top);
     g.addColorStop(1, theme.bottom);
@@ -1605,7 +1690,7 @@ function CoinChaseGame(props){
 
     for(var r = 0; r < CC_ROWS; r++){
       for(var c = 0; c < CC_COLS; c++){
-        if(CC_MAZE[r][c] !== 1) continue;
+        if(maze[r][c] !== 1) continue;
         const x = CC_OX + c * CC_CELL;
         const y = CC_OY + r * CC_CELL;
         ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -1731,11 +1816,12 @@ function CoinChaseGame(props){
 
   const trySetDir = function(dc, dr){
     const player = playerRef.current;
+    const maze = mazeRef.current;
     player.nextDir = {dc:dc, dr:dr};
     if(player.dir.dc === 0 && player.dir.dr === 0){
       const nc = player.c + dc;
       const nr = player.r + dr;
-      if(!ccIsWall(nc, nr)){
+      if(!ccIsWall(maze, nc, nr)){
         player.dir = {dc:dc, dr:dr};
       }
     }
@@ -1762,6 +1848,7 @@ function CoinChaseGame(props){
     if(!canvas || finishedRef.current) return;
     const ctx = canvas.getContext("2d");
     const player = playerRef.current;
+    const maze = mazeRef.current;
 
     if(playingRef.current && !reducedRef.current){
       const center = ccCellCenter(player.c, player.r);
@@ -1774,12 +1861,12 @@ function CoinChaseGame(props){
 
         const nd = player.nextDir;
         if(nd.dc || nd.dr){
-          if(!ccIsWall(player.c + nd.dc, player.r + nd.dr)){
+          if(!ccIsWall(maze, player.c + nd.dc, player.r + nd.dr)){
             player.dir = {dc:nd.dc, dr:nd.dr};
           }
         }
         if(player.dir.dc || player.dir.dr){
-          if(ccIsWall(player.c + player.dir.dc, player.r + player.dir.dr)){
+          if(ccIsWall(maze, player.c + player.dir.dc, player.r + player.dir.dr)){
             player.dir = {dc:0, dr:0};
           }else{
             player.c += player.dir.dc;

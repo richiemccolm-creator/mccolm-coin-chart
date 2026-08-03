@@ -1868,22 +1868,130 @@ var CC_OX = (CC_W - CC_COLS * CC_CELL) / 2;
 var CC_OY = 28;
 var CC_SPEED = 2.6;
 var CC_TIME_SEC = 35;
-/* 1 = wall, 0 = path. Start at (5,1). Coins on selected path cells. */
-var CC_MAZE = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1], [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1], [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1], [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]];
-var CC_START = {
-  c: 5,
-  r: 1
-};
-var CC_COIN_CELLS = [[1, 1], [3, 1], [7, 1], [9, 1], [1, 3], [5, 3], [9, 3], [3, 5], [7, 5], [1, 7], [5, 7], [9, 7], [3, 9], [7, 9], [1, 11], [5, 11], [9, 11]];
+var CC_COIN_TARGET = 14;
 function ccCellCenter(c, r) {
   return {
     x: CC_OX + c * CC_CELL + CC_CELL / 2,
     y: CC_OY + r * CC_CELL + CC_CELL / 2
   };
 }
-function ccIsWall(c, r) {
+function ccIsWall(maze, c, r) {
   if (r < 0 || c < 0 || r >= CC_ROWS || c >= CC_COLS) return true;
-  return CC_MAZE[r][c] === 1;
+  return maze[r][c] === 1;
+}
+function ccShuffleInPlace(arr) {
+  for (var i = arr.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
+function ccReachableCells(maze, startC, startR) {
+  var seen = {};
+  var out = [];
+  var q = [{
+    c: startC,
+    r: startR
+  }];
+  seen[startC + "," + startR] = true;
+  var dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+  while (q.length) {
+    var p = q.shift();
+    out.push(p);
+    for (var k = 0; k < 4; k++) {
+      var nc = p.c + dirs[k][0];
+      var nr = p.r + dirs[k][1];
+      if (ccIsWall(maze, nc, nr)) continue;
+      var key = nc + "," + nr;
+      if (seen[key]) continue;
+      seen[key] = true;
+      q.push({
+        c: nc,
+        r: nr
+      });
+    }
+  }
+  return out;
+}
+
+/* Fresh maze + coin set each play (recursive backtracker + a few loops). */
+function ccGenerateLayout() {
+  var maze = [];
+  var r, c, i;
+  for (r = 0; r < CC_ROWS; r++) {
+    maze[r] = [];
+    for (c = 0; c < CC_COLS; c++) maze[r][c] = 1;
+  }
+  for (r = 1; r < CC_ROWS; r += 2) {
+    for (c = 1; c < CC_COLS; c += 2) maze[r][c] = 0;
+  }
+  var startC = 5;
+  var startR = 1;
+  var stack = [{
+    c: startC,
+    r: startR
+  }];
+  var visited = {};
+  visited[startC + "," + startR] = true;
+  var stepDirs = [[0, -2], [0, 2], [-2, 0], [2, 0]];
+  while (stack.length) {
+    var cur = stack[stack.length - 1];
+    var opts = [];
+    for (i = 0; i < stepDirs.length; i++) {
+      var nc = cur.c + stepDirs[i][0];
+      var nr = cur.r + stepDirs[i][1];
+      if (nr < 1 || nc < 1 || nr >= CC_ROWS - 1 || nc >= CC_COLS - 1) continue;
+      if (visited[nc + "," + nr]) continue;
+      opts.push({
+        c: nc,
+        r: nr,
+        dc: stepDirs[i][0],
+        dr: stepDirs[i][1]
+      });
+    }
+    if (!opts.length) {
+      stack.pop();
+      continue;
+    }
+    ccShuffleInPlace(opts);
+    var next = opts[0];
+    maze[cur.r + next.dr / 2][cur.c + next.dc / 2] = 0;
+    maze[next.r][next.c] = 0;
+    visited[next.c + "," + next.r] = true;
+    stack.push({
+      c: next.c,
+      r: next.r
+    });
+  }
+  var extras = 5 + Math.floor(Math.random() * 6);
+  for (i = 0; i < extras; i++) {
+    var er = 2 + Math.floor(Math.random() * (CC_ROWS - 4));
+    var ec = 2 + Math.floor(Math.random() * (CC_COLS - 4));
+    if (maze[er][ec] !== 1) continue;
+    var openN = (maze[er - 1][ec] === 0 ? 1 : 0) + (maze[er + 1][ec] === 0 ? 1 : 0) + (maze[er][ec - 1] === 0 ? 1 : 0) + (maze[er][ec + 1] === 0 ? 1 : 0);
+    if (openN >= 2) maze[er][ec] = 0;
+  }
+  var reach = ccReachableCells(maze, startC, startR);
+  var candidates = reach.filter(function (p) {
+    return !(p.c === startC && p.r === startR);
+  });
+  ccShuffleInPlace(candidates);
+  var coinCount = Math.min(CC_COIN_TARGET, candidates.length);
+  if (coinCount < 8 && candidates.length >= 8) coinCount = 8;
+  var coins = [];
+  for (i = 0; i < coinCount; i++) {
+    coins.push([candidates[i].c, candidates[i].r]);
+  }
+  return {
+    maze: maze,
+    start: {
+      c: startC,
+      r: startR
+    },
+    coins: coins
+  };
 }
 function CoinChaseGame(props) {
   var kid = props.kid;
@@ -1891,12 +1999,18 @@ function CoinChaseGame(props) {
   var onComplete = props.onComplete;
   var onClose = props.onClose;
   var awardReward = props.awardReward;
+  var _useState19 = useState(function () {
+      return ccGenerateLayout();
+    }),
+    _useState20 = _slicedToArray(_useState19, 1),
+    layout = _useState20[0];
+  var mazeRef = useRef(layout.maze);
   var canvasRef = useRef(null);
   var playerRef = useRef({
-    c: CC_START.c,
-    r: CC_START.r,
-    x: ccCellCenter(CC_START.c, CC_START.r).x,
-    y: ccCellCenter(CC_START.c, CC_START.r).y,
+    c: layout.start.c,
+    r: layout.start.r,
+    x: ccCellCenter(layout.start.c, layout.start.r).x,
+    y: ccCellCenter(layout.start.c, layout.start.r).y,
     dir: {
       dc: 0,
       dr: 0
@@ -1906,7 +2020,7 @@ function CoinChaseGame(props) {
       dr: 0
     }
   });
-  var coinsRef = useRef(CC_COIN_CELLS.map(function (pair) {
+  var coinsRef = useRef(layout.coins.map(function (pair) {
     return {
       c: pair[0],
       r: pair[1],
@@ -1923,47 +2037,48 @@ function CoinChaseGame(props) {
   var pointerStartRef = useRef(null);
   var lastShownSecRef = useRef(CC_TIME_SEC);
   var playingRef = useRef(false);
-  var _useState19 = useState("ready"),
-    _useState20 = _slicedToArray(_useState19, 2),
-    gameStage = _useState20[0],
-    setGameStage = _useState20[1];
-  var _useState21 = useState(CC_COIN_CELLS.length),
+  var _useState21 = useState("ready"),
     _useState22 = _slicedToArray(_useState21, 2),
-    coinsLeft = _useState22[0],
-    setCoinsLeft = _useState22[1];
-  var _useState23 = useState(CC_TIME_SEC),
+    gameStage = _useState22[0],
+    setGameStage = _useState22[1];
+  var _useState23 = useState(layout.coins.length),
     _useState24 = _slicedToArray(_useState23, 2),
-    secsLeft = _useState24[0],
-    setSecsLeft = _useState24[1];
-  var _useState25 = useState(false),
+    coinsLeft = _useState24[0],
+    setCoinsLeft = _useState24[1];
+  var _useState25 = useState(CC_TIME_SEC),
     _useState26 = _slicedToArray(_useState25, 2),
-    resultWon = _useState26[0],
-    setResultWon = _useState26[1];
-  var _useState27 = useState(null),
+    secsLeft = _useState26[0],
+    setSecsLeft = _useState26[1];
+  var _useState27 = useState(false),
     _useState28 = _slicedToArray(_useState27, 2),
-    resultText = _useState28[0],
-    setResultText = _useState28[1];
+    resultWon = _useState28[0],
+    setResultWon = _useState28[1];
   var _useState29 = useState(null),
     _useState30 = _slicedToArray(_useState29, 2),
-    resultSub = _useState30[0],
-    setResultSub = _useState30[1];
+    resultText = _useState30[0],
+    setResultText = _useState30[1];
   var _useState31 = useState(null),
     _useState32 = _slicedToArray(_useState31, 2),
-    resultCheer = _useState32[0],
-    setResultCheer = _useState32[1];
+    resultSub = _useState32[0],
+    setResultSub = _useState32[1];
   var _useState33 = useState(null),
     _useState34 = _slicedToArray(_useState33, 2),
-    resultAmount = _useState34[0],
-    setResultAmount = _useState34[1];
-  var _useState35 = useState(false),
+    resultCheer = _useState34[0],
+    setResultCheer = _useState34[1];
+  var _useState35 = useState(null),
     _useState36 = _slicedToArray(_useState35, 2),
-    boostFlash = _useState36[0],
-    setBoostFlash = _useState36[1];
+    resultAmount = _useState36[0],
+    setResultAmount = _useState36[1];
+  var _useState37 = useState(false),
+    _useState38 = _slicedToArray(_useState37, 2),
+    boostFlash = _useState38[0],
+    setBoostFlash = _useState38[1];
   themeRef.current = cdThemeForKid(kid);
   var drawBoard = function drawBoard(ctx) {
     var theme = themeRef.current;
     var player = playerRef.current;
     var coins = coinsRef.current;
+    var maze = mazeRef.current;
     var g = ctx.createLinearGradient(0, 0, 0, CC_H);
     g.addColorStop(0, theme.top);
     g.addColorStop(1, theme.bottom);
@@ -1982,7 +2097,7 @@ function CoinChaseGame(props) {
     ctx.restore();
     for (var r = 0; r < CC_ROWS; r++) {
       for (var c = 0; c < CC_COLS; c++) {
-        if (CC_MAZE[r][c] !== 1) continue;
+        if (maze[r][c] !== 1) continue;
         var x = CC_OX + c * CC_CELL;
         var y = CC_OY + r * CC_CELL;
         ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -2102,6 +2217,7 @@ function CoinChaseGame(props) {
   };
   var trySetDir = function trySetDir(dc, dr) {
     var player = playerRef.current;
+    var maze = mazeRef.current;
     player.nextDir = {
       dc: dc,
       dr: dr
@@ -2109,7 +2225,7 @@ function CoinChaseGame(props) {
     if (player.dir.dc === 0 && player.dir.dr === 0) {
       var nc = player.c + dc;
       var nr = player.r + dr;
-      if (!ccIsWall(nc, nr)) {
+      if (!ccIsWall(maze, nc, nr)) {
         player.dir = {
           dc: dc,
           dr: dr
@@ -2139,6 +2255,7 @@ function CoinChaseGame(props) {
     if (!canvas || finishedRef.current) return;
     var ctx = canvas.getContext("2d");
     var player = playerRef.current;
+    var maze = mazeRef.current;
     if (playingRef.current && !reducedRef.current) {
       var center = ccCellCenter(player.c, player.r);
       var atCenter = Math.abs(player.x - center.x) < 1.2 && Math.abs(player.y - center.y) < 1.2;
@@ -2148,7 +2265,7 @@ function CoinChaseGame(props) {
         collectAt(player.c, player.r);
         var nd = player.nextDir;
         if (nd.dc || nd.dr) {
-          if (!ccIsWall(player.c + nd.dc, player.r + nd.dr)) {
+          if (!ccIsWall(maze, player.c + nd.dc, player.r + nd.dr)) {
             player.dir = {
               dc: nd.dc,
               dr: nd.dr
@@ -2156,7 +2273,7 @@ function CoinChaseGame(props) {
           }
         }
         if (player.dir.dc || player.dir.dr) {
-          if (ccIsWall(player.c + player.dir.dc, player.r + player.dir.dr)) {
+          if (ccIsWall(maze, player.c + player.dir.dc, player.r + player.dir.dr)) {
             player.dir = {
               dc: 0,
               dr: 0
@@ -2452,38 +2569,38 @@ function MazeDashGame(props) {
   var pointerStartRef = useRef(null);
   var lastShownSecRef = useRef(MD_TIME_SEC);
   var playingRef = useRef(false);
-  var _useState37 = useState("ready"),
-    _useState38 = _slicedToArray(_useState37, 2),
-    gameStage = _useState38[0],
-    setGameStage = _useState38[1];
-  var _useState39 = useState(MD_TIME_SEC),
+  var _useState39 = useState("ready"),
     _useState40 = _slicedToArray(_useState39, 2),
-    secsLeft = _useState40[0],
-    setSecsLeft = _useState40[1];
-  var _useState41 = useState(false),
+    gameStage = _useState40[0],
+    setGameStage = _useState40[1];
+  var _useState41 = useState(MD_TIME_SEC),
     _useState42 = _slicedToArray(_useState41, 2),
-    resultWon = _useState42[0],
-    setResultWon = _useState42[1];
-  var _useState43 = useState(null),
+    secsLeft = _useState42[0],
+    setSecsLeft = _useState42[1];
+  var _useState43 = useState(false),
     _useState44 = _slicedToArray(_useState43, 2),
-    resultText = _useState44[0],
-    setResultText = _useState44[1];
+    resultWon = _useState44[0],
+    setResultWon = _useState44[1];
   var _useState45 = useState(null),
     _useState46 = _slicedToArray(_useState45, 2),
-    resultSub = _useState46[0],
-    setResultSub = _useState46[1];
+    resultText = _useState46[0],
+    setResultText = _useState46[1];
   var _useState47 = useState(null),
     _useState48 = _slicedToArray(_useState47, 2),
-    resultCheer = _useState48[0],
-    setResultCheer = _useState48[1];
+    resultSub = _useState48[0],
+    setResultSub = _useState48[1];
   var _useState49 = useState(null),
     _useState50 = _slicedToArray(_useState49, 2),
-    resultAmount = _useState50[0],
-    setResultAmount = _useState50[1];
-  var _useState51 = useState(false),
+    resultCheer = _useState50[0],
+    setResultCheer = _useState50[1];
+  var _useState51 = useState(null),
     _useState52 = _slicedToArray(_useState51, 2),
-    boostFlash = _useState52[0],
-    setBoostFlash = _useState52[1];
+    resultAmount = _useState52[0],
+    setResultAmount = _useState52[1];
+  var _useState53 = useState(false),
+    _useState54 = _slicedToArray(_useState53, 2),
+    boostFlash = _useState54[0],
+    setBoostFlash = _useState54[1];
   themeRef.current = cdThemeForKid(kid);
   var drawBoard = function drawBoard(ctx) {
     var theme = themeRef.current;
@@ -2916,71 +3033,71 @@ function App() {
   var initial = useMemo(function () {
     return loadState();
   }, []);
-  var _useState53 = useState(initial.kid),
-    _useState54 = _slicedToArray(_useState53, 2),
-    kid = _useState54[0],
-    setKid = _useState54[1];
-  var _useState55 = useState(initial.coins),
+  var _useState55 = useState(initial.kid),
     _useState56 = _slicedToArray(_useState55, 2),
-    coins = _useState56[0],
-    setCoins = _useState56[1];
-  var _useState57 = useState(initial.log),
+    kid = _useState56[0],
+    setKid = _useState56[1];
+  var _useState57 = useState(initial.coins),
     _useState58 = _slicedToArray(_useState57, 2),
-    log = _useState58[0],
-    setLog = _useState58[1];
-  var _useState59 = useState(initial.unlocks),
+    coins = _useState58[0],
+    setCoins = _useState58[1];
+  var _useState59 = useState(initial.log),
     _useState60 = _slicedToArray(_useState59, 2),
-    unlocks = _useState60[0],
-    setUnlocks = _useState60[1];
-  var _useState61 = useState(initial.boosts),
+    log = _useState60[0],
+    setLog = _useState60[1];
+  var _useState61 = useState(initial.unlocks),
     _useState62 = _slicedToArray(_useState61, 2),
-    boosts = _useState62[0],
-    setBoosts = _useState62[1];
-  var _useState63 = useState(initial.settings || defaultSettings()),
+    unlocks = _useState62[0],
+    setUnlocks = _useState62[1];
+  var _useState63 = useState(initial.boosts),
     _useState64 = _slicedToArray(_useState63, 2),
-    settings = _useState64[0],
-    setSettings = _useState64[1];
-  var _useState65 = useState(initial.pendingReward || null),
+    boosts = _useState64[0],
+    setBoosts = _useState64[1];
+  var _useState65 = useState(initial.settings || defaultSettings()),
     _useState66 = _slicedToArray(_useState65, 2),
-    pendingReward = _useState66[0],
-    setPendingReward = _useState66[1];
-  var _useState67 = useState(null),
+    settings = _useState66[0],
+    setSettings = _useState66[1];
+  var _useState67 = useState(initial.pendingReward || null),
     _useState68 = _slicedToArray(_useState67, 2),
-    modal = _useState68[0],
-    setModal = _useState68[1]; // vault | timer | history | settings | profile | unlock | coinDrop
-  var _useState69 = useState([]),
+    pendingReward = _useState68[0],
+    setPendingReward = _useState68[1];
+  var _useState69 = useState(null),
     _useState70 = _slicedToArray(_useState69, 2),
-    unlockQueue = _useState70[0],
-    setUnlockQueue = _useState70[1];
-  var unlockQueueRef = useRef([]);
-  var _useState71 = useState(null),
+    modal = _useState70[0],
+    setModal = _useState70[1]; // vault | timer | history | settings | profile | unlock | coinDrop
+  var _useState71 = useState([]),
     _useState72 = _slicedToArray(_useState71, 2),
-    timerJob = _useState72[0],
-    setTimerJob = _useState72[1];
-  var _useState73 = useState(120),
+    unlockQueue = _useState72[0],
+    setUnlockQueue = _useState72[1];
+  var unlockQueueRef = useRef([]);
+  var _useState73 = useState(null),
     _useState74 = _slicedToArray(_useState73, 2),
-    secs = _useState74[0],
-    setSecs = _useState74[1];
-  var _useState75 = useState(false),
+    timerJob = _useState74[0],
+    setTimerJob = _useState74[1];
+  var _useState75 = useState(120),
     _useState76 = _slicedToArray(_useState75, 2),
-    running = _useState76[0],
-    setRunning = _useState76[1];
+    secs = _useState76[0],
+    setSecs = _useState76[1];
   var _useState77 = useState(false),
     _useState78 = _slicedToArray(_useState77, 2),
-    done = _useState78[0],
-    setDone = _useState78[1];
-  var _useState79 = useState(null),
+    running = _useState78[0],
+    setRunning = _useState78[1];
+  var _useState79 = useState(false),
     _useState80 = _slicedToArray(_useState79, 2),
-    toast = _useState80[0],
-    setToast = _useState80[1];
-  var _useState81 = useState(supabaseReady() ? "syncing" : "local"),
+    done = _useState80[0],
+    setDone = _useState80[1];
+  var _useState81 = useState(null),
     _useState82 = _slicedToArray(_useState81, 2),
-    cloud = _useState82[0],
-    setCloud = _useState82[1];
-  var _useState83 = useState(null),
+    toast = _useState82[0],
+    setToast = _useState82[1];
+  var _useState83 = useState(supabaseReady() ? "syncing" : "local"),
     _useState84 = _slicedToArray(_useState83, 2),
-    focusedRow = _useState84[0],
-    setFocusedRow = _useState84[1];
+    cloud = _useState84[0],
+    setCloud = _useState84[1];
+  var _useState85 = useState(null),
+    _useState86 = _slicedToArray(_useState85, 2),
+    focusedRow = _useState86[0],
+    setFocusedRow = _useState86[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -4272,10 +4389,10 @@ function App() {
     setFocusedRow(null);
   };
   var vaultRef = useRef(null);
-  var _useState85 = useState(false),
-    _useState86 = _slicedToArray(_useState85, 2),
-    pinKid = _useState86[0],
-    setPinKid = _useState86[1];
+  var _useState87 = useState(false),
+    _useState88 = _slicedToArray(_useState87, 2),
+    pinKid = _useState88[0],
+    setPinKid = _useState88[1];
   useEffect(function () {
     var el = vaultRef.current;
     if (!el) return;
