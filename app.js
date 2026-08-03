@@ -655,6 +655,10 @@ function isPracticeBrushSource(source) {
 function normalizePendingReward(raw) {
   if (!raw || _typeof(raw) !== "object" || !raw.rewardId || !raw.kidId) return null;
   if (!KIDS[raw.kidId]) return null;
+  var game = "coinDrop";
+  if (raw.game === "coinChase" || raw.game === "mazeDash" || raw.game === "coinDrop") {
+    game = raw.game;
+  }
   return {
     rewardId: String(raw.rewardId),
     kidId: raw.kidId,
@@ -662,8 +666,18 @@ function normalizePendingReward(raw) {
     description: raw.description || "Brush teeth",
     source: raw.source || "brush-am",
     createdAt: raw.createdAt || new Date().toISOString(),
-    awarded: !!raw.awarded
+    awarded: !!raw.awarded,
+    game: game
   };
+}
+function brushGameFromPending(pending) {
+  if (!pending) return "coinDrop";
+  if (pending.game === "coinChase" || pending.game === "mazeDash" || pending.game === "coinDrop") {
+    return pending.game;
+  }
+  if (pending.source === "test-chase") return "coinChase";
+  if (pending.source === "test-dash") return "mazeDash";
+  return "coinDrop";
 }
 function makeRewardId() {
   try {
@@ -3923,7 +3937,8 @@ function App() {
         description: "Bonus Coin Drop",
         source: "powerup-extra-drop",
         createdAt: new Date().toISOString(),
-        awarded: false
+        awarded: false,
+        game: "coinDrop"
       };
       pendingRewardRef.current = reward;
       setPendingReward(reward);
@@ -4041,7 +4056,11 @@ function App() {
       }
       var slug = reward.kidId;
       if (reward.rewardId && awardedRewardIdsRef.current[reward.rewardId]) {
-        clearPendingReward();
+        if (modal === "coinDrop" || modal === "coinChase" || modal === "mazeDash") {
+          finishCoinDropFlow();
+        } else {
+          clearPendingReward();
+        }
         return Promise.resolve({
           amountAwarded: 0,
           boostApplied: false,
@@ -4052,7 +4071,11 @@ function App() {
         return tx && reward.rewardId && tx.rewardId === reward.rewardId;
       });
       if (alreadyExists) {
-        clearPendingReward();
+        if (modal === "coinDrop" || modal === "coinChase" || modal === "mazeDash") {
+          finishCoinDropFlow();
+        } else {
+          clearPendingReward();
+        }
         return Promise.resolve({
           amountAwarded: 0,
           boostApplied: false,
@@ -4097,7 +4120,8 @@ function App() {
       description: "Test Coin Drop",
       source: "test-drop",
       createdAt: new Date().toISOString(),
-      awarded: false
+      awarded: false,
+      game: "coinDrop"
     };
     pendingRewardRef.current = reward;
     setPendingReward(reward);
@@ -4118,7 +4142,8 @@ function App() {
       description: "Test Coin Chase",
       source: "test-chase",
       createdAt: new Date().toISOString(),
-      awarded: false
+      awarded: false,
+      game: "coinChase"
     };
     pendingRewardRef.current = reward;
     setPendingReward(reward);
@@ -4139,7 +4164,8 @@ function App() {
       description: "Test Maze Dash",
       source: "test-dash",
       createdAt: new Date().toISOString(),
-      awarded: false
+      awarded: false,
+      game: "mazeDash"
     };
     pendingRewardRef.current = reward;
     setPendingReward(reward);
@@ -4199,6 +4225,7 @@ function App() {
       var desc = job ? job.name + (job.sub ? " (" + job.sub + ")" : "") : "Brush teeth";
       var source = job ? job.id : "brush-am";
       var amount = job ? job.coins : 1;
+      var nextGame = settings.lastBrushGame === "coinChase" ? "coinChase" : settings.lastBrushGame === "mazeDash" ? "mazeDash" : "coinDrop";
       var reward = {
         rewardId: makeRewardId(),
         kidId: kid,
@@ -4206,13 +4233,13 @@ function App() {
         description: desc,
         source: source,
         createdAt: new Date().toISOString(),
-        awarded: false
+        awarded: false,
+        game: nextGame
       };
       if (settings.coinDropEnabled !== false) {
         pendingRewardRef.current = reward;
         setPendingReward(reward);
         deferUnlockModalRef.current = true;
-        var nextGame = settings.lastBrushGame === "coinChase" ? "coinChase" : settings.lastBrushGame === "mazeDash" ? "mazeDash" : "coinDrop";
         setSettings(function (s) {
           return Object.assign({}, s, {
             lastBrushGame: nextBrushGame(nextGame)
@@ -4239,29 +4266,21 @@ function App() {
     };
   }, [running, secs]);
 
-  /* Recover unresolved pending brushing rewards on boot */
+  /* Resume unresolved brushing games on boot — do not auto-award away the play */
   useEffect(function () {
     if (recoveryDoneRef.current) return;
     recoveryDoneRef.current = true;
     var pending = pendingRewardRef.current || pendingReward;
-    if (!pending || pending.awarded) return;
+    if (!pending) return;
     var exists = (logRef.current[pending.kidId] || []).some(function (tx) {
       return tx && tx.rewardId && tx.rewardId === pending.rewardId;
     });
-    if (exists) {
+    if (exists || pending.awarded) {
       clearPendingReward();
       return;
     }
-    // Prefer automatic recovery if unclear whether the game was already played
-    completePendingReward(pending).then(function () {
-      deferUnlockModalRef.current = false;
-      if (unlockQueueRef.current && unlockQueueRef.current.length) {
-        try {
-          tune.fanfare();
-        } catch (e) {}
-        setModal("unlock");
-      }
-    });
+    deferUnlockModalRef.current = true;
+    setModal(brushGameFromPending(pending));
   }, []);
 
   /* coin spill canvas — gravity follows phone tilt when available */
