@@ -303,6 +303,56 @@ function useBrushingTune(){
   return {start,pause,stop,fanfare};
 }
 
+/* Keep the screen on while the brushing timer is running (Screen Wake Lock API) */
+function useBrushScreenWakeLock(active){
+  const lockRef = useRef(null);
+
+  useEffect(function(){
+    let cancelled = false;
+
+    async function requestLock(){
+      if(!active || cancelled) return;
+      if(typeof navigator === "undefined" || !navigator.wakeLock || typeof navigator.wakeLock.request !== "function") return;
+      if(typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      try{
+        const lock = await navigator.wakeLock.request("screen");
+        if(cancelled || !active){
+          try{ await lock.release(); }catch(e){}
+          return;
+        }
+        lockRef.current = lock;
+        lock.addEventListener("release", function(){
+          if(lockRef.current === lock) lockRef.current = null;
+        });
+      }catch(e){}
+    }
+
+    async function releaseLock(){
+      const lock = lockRef.current;
+      lockRef.current = null;
+      if(!lock) return;
+      try{ await lock.release(); }catch(e){}
+    }
+
+    if(active){
+      requestLock();
+    }else{
+      releaseLock();
+    }
+
+    function onVisibility(){
+      if(document.visibilityState === "visible" && active) requestLock();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return function(){
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      releaseLock();
+    };
+  },[active]);
+}
+
 /* ---------- persistence: localStorage cache + shared Supabase project ---------- */
 const STORAGE_KEY = "coin-chart-v2";
 const DEFAULT_COINS = {sam:0,isaac:0,ben:0};
@@ -2621,6 +2671,7 @@ function App(){
   const deferUnlockModalRef = useRef(false);
   const recoveryDoneRef = useRef(false);
   const tune = useBrushingTune();
+  useBrushScreenWakeLock(running);
 
   useEffect(function(){
     coinsRef.current = coins;
