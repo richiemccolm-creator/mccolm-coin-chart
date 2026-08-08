@@ -204,31 +204,164 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
 @-webkit-keyframes kidPinIn{from{-webkit-transform:translate(-50%,-14px);opacity:0}to{-webkit-transform:translate(-50%,0);opacity:1}}
 @keyframes kidPinIn{from{transform:translate(-50%,-14px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
 
-/* ---------- VAULT / BALANCE ---------- */
+/* ---------- VAULT / PROUD COIN STACK ---------- */
 .vault{
   cursor:pointer;border:5px solid #000;border-radius:16px;margin-bottom:16px;
   background:#ffb300;
   background:-webkit-linear-gradient(285deg,#ffd75e,#ffb300 55%,#e08e00);
   background:linear-gradient(165deg,#ffd75e,#ffb300 55%,#e08e00);
   box-shadow:0 8px 0 #000,inset 0 3px 0 rgba(255,255,255,.6);
-  padding:14px 16px;
-  display:-webkit-box;display:-webkit-flex;display:flex;
-  -webkit-box-align:center;-webkit-align-items:center;align-items:center;
+  padding:12px 14px 10px;
   position:relative;overflow:hidden;
 }
-.vault > * + *{margin-left:14px}
 .vault::after{
   content:'';position:absolute;top:-60%;left:-30%;width:60%;height:220%;
   background:-webkit-linear-gradient(left,transparent,rgba(255,255,255,.55),transparent);
   background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);
   -webkit-transform:rotate(18deg);transform:rotate(18deg);
   -webkit-animation:sweep 4.5s ease-in-out infinite;animation:sweep 4.5s ease-in-out infinite;
+  pointer-events:none;
 }
 @-webkit-keyframes sweep{0%{left:-40%}55%{left:120%}100%{left:120%}}
 @keyframes sweep{0%{left:-40%}55%{left:120%}100%{left:120%}}
-.vault .big{font-size:2.8rem;color:#8b0000;color:var(--red-dark);line-height:.9}
-.vault .lbl{font-weight:900;color:#7a3b00;font-size:.8rem;text-transform:uppercase;letter-spacing:1px}
-.vault .tap{margin-left:auto;text-align:right;font-weight:900;color:#7a3b00;font-size:.75rem;text-transform:uppercase}
+.vault-main{
+  position:relative;z-index:1;
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-align:end;-webkit-align-items:flex-end;align-items:flex-end;
+  -webkit-box-pack:justify;-webkit-justify-content:space-between;justify-content:space-between;
+}
+.vault-stack-col{
+  -webkit-box-flex:1;-webkit-flex:1;flex:1;
+  min-width:0;
+  padding-right:10px;
+}
+.vault .lbl{font-weight:900;color:#7a3b00;font-size:.78rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.vault-stack-row{
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-align:end;-webkit-align-items:flex-end;align-items:flex-end;
+}
+.vault-stack-row > * + *{margin-left:12px}
+.coin-stack{
+  position:relative;
+  width:34px;
+  -webkit-flex:none;flex:none;
+  min-height:30px;
+}
+.stack-coin{
+  position:absolute;left:1px;
+  width:32px;height:32px;border-radius:50%;
+  border:3px solid #8a5300;
+  background:#ffc42e;
+  background:-webkit-radial-gradient(35% 30%, circle, #fff3b0,#ffc42e 45%,#e08e00);
+  background:radial-gradient(circle at 35% 30%,#fff3b0,#ffc42e 45%,#e08e00);
+  box-shadow:0 3px 0 #8a5300,inset 0 2px 2px rgba(255,255,255,.75);
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-align:center;-webkit-align-items:center;align-items:center;
+  -webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;
+  -webkit-animation:stackPop .45s ease both;animation:stackPop .45s ease both;
+}
+.stack-coin.ghost{
+  background:#c8c8c8;
+  background:-webkit-radial-gradient(35% 30%, circle, #ececec,#c8c8c8 50%,#9a9a9a);
+  background:radial-gradient(circle at 35% 30%,#ececec,#c8c8c8 50%,#9a9a9a);
+  border:3px dashed #7a7a7a;
+  box-shadow:none;
+  opacity:.42;
+  -webkit-animation:ghostPulse 2.2s ease-in-out infinite;animation:ghostPulse 2.2s ease-in-out infinite;
+}
+.stack-star{
+  font-size:.72rem;line-height:1;color:#8a5300;font-weight:900;
+  -webkit-transform:translateY(1px);transform:translateY(1px);
+}
+@-webkit-keyframes stackPop{
+  0%{-webkit-transform:translateY(10px) scale(.72);opacity:0}
+  65%{-webkit-transform:translateY(-3px) scale(1.08);opacity:1}
+  100%{-webkit-transform:translateY(0) scale(1);opacity:1}
+}
+@keyframes stackPop{
+  0%{transform:translateY(10px) scale(.72);opacity:0}
+  65%{transform:translateY(-3px) scale(1.08);opacity:1}
+  100%{transform:translateY(0) scale(1);opacity:1}
+}
+@-webkit-keyframes ghostPulse{
+  0%,100%{opacity:.32}
+  50%{opacity:.55}
+}
+@keyframes ghostPulse{
+  0%,100%{opacity:.32}
+  50%{opacity:.55}
+}
+.vault-balance{min-width:0}
+.vault .big{font-size:2.6rem;color:#8b0000;color:var(--red-dark);line-height:.9}
+.vault-goal{
+  margin-top:2px;font-weight:900;color:#7a3b00;font-size:.72rem;line-height:1.25;
+  max-width:11.5rem;
+}
+.vault-powers{
+  margin-top:8px;position:relative;z-index:2;
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-align:center;-webkit-align-items:center;align-items:center;
+  -webkit-flex-wrap:wrap;flex-wrap:wrap;
+  gap:6px;
+}
+.vault-boosts{margin-top:0}
+.vault-power-chips{
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-flex-wrap:wrap;flex-wrap:wrap;gap:4px;
+}
+.vault-power-chip{
+  display:-webkit-inline-box;display:-webkit-inline-flex;display:inline-flex;
+  -webkit-box-align:center;-webkit-align-items:center;align-items:center;
+  -webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;
+  width:34px;height:34px;border-radius:10px;border:3px solid #000;
+  background:#fff;font-size:1.15rem;line-height:1;
+  box-shadow:0 3px 0 rgba(0,0,0,.35);
+}
+.vault-power-chip.used{opacity:.45;-webkit-filter:grayscale(.7);filter:grayscale(.7);background:#eee}
+.vault-hero{
+  -webkit-flex:none;flex:none;
+  text-align:center;
+  position:relative;z-index:1;
+  padding-bottom:2px;
+  background:transparent !important;
+}
+.vault-hero-face{
+  width:104px;height:104px;border-radius:18px;border:4px solid #000;
+  background:#fff;overflow:hidden;
+  box-shadow:0 6px 0 rgba(0,0,0,.45);
+  -webkit-animation:proudBob 2.4s ease-in-out infinite;animation:proudBob 2.4s ease-in-out infinite;
+}
+.vault-hero-face.has-img{border:4px solid #000;background:#fff;overflow:hidden}
+.vault-hero-face img{
+  width:100%;height:100%;object-fit:cover;object-position:center top;display:block;
+  border-radius:14px;
+}
+.vault-hero.h-sam .vault-hero-face{box-shadow:0 6px 0 #c45f00,0 0 0 3px rgba(255,140,0,.35)}
+.vault-hero.h-isaac .vault-hero-face{box-shadow:0 6px 0 #0b3d91,0 0 0 3px rgba(90,169,255,.35)}
+.vault-hero.h-ben .vault-hero-face{box-shadow:0 6px 0 #8b0000,0 0 0 3px rgba(255,59,59,.35)}
+.vault-hero-name{
+  margin-top:6px;font-size:1.05rem;color:#111;line-height:1;
+  text-shadow:2px 2px 0 #fff;
+}
+@-webkit-keyframes proudBob{
+  0%,100%{-webkit-transform:translateY(0)}
+  50%{-webkit-transform:translateY(-7px)}
+}
+@keyframes proudBob{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-7px)}
+}
+.vault .tap{
+  position:relative;z-index:1;
+  margin-top:8px;text-align:center;
+  font-weight:900;color:#7a3b00;font-size:.72rem;text-transform:uppercase;
+  letter-spacing:.4px;
+}
+@media (max-width:380px){
+  .vault-hero-face{width:86px;height:86px}
+  .vault .big{font-size:2.2rem}
+  .vault-goal{max-width:9.5rem;font-size:.68rem}
+}
 
 /* ---------- PANELS ---------- */
 .cols{display:block}

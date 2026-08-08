@@ -288,6 +288,44 @@ var SAVINGS_SHOP = [{
   sub: "all three boys",
   coins: 250
 }];
+var MAX_STACK = 20;
+
+/* Cheapest shop treat the kid cannot afford yet (excludes Mum's Food Tax) */
+function nextShopGoal(balance) {
+  var items = EVERYDAY_SHOP.concat(WEEKEND_SHOP, SAVINGS_SHOP).slice().sort(function (a, b) {
+    return a.coins - b.coins;
+  });
+  for (var i = 0; i < items.length; i++) {
+    if (balance < items[i].coins) return items[i];
+  }
+  return null;
+}
+
+/* Map balance + goal to filled/ghost disc counts for the vault stack */
+function coinStackSlots(balance, goal) {
+  var bal = Math.max(0, balance | 0);
+  if (!goal) {
+    return {
+      filled: Math.min(bal, MAX_STACK),
+      ghost: 0
+    };
+  }
+  var cost = goal.coins;
+  if (cost <= MAX_STACK) {
+    var _filled = Math.min(bal, cost);
+    return {
+      filled: _filled,
+      ghost: Math.max(0, cost - _filled)
+    };
+  }
+  var filled = Math.floor(bal / cost * MAX_STACK);
+  if (bal > 0 && filled < 1) filled = 1;
+  if (filled >= MAX_STACK) filled = MAX_STACK - 1;
+  return {
+    filled: filled,
+    ghost: MAX_STACK - filled
+  };
+}
 
 /* Secret milestone trophies (titles only revealed on unlock / profile) */
 var TROPHIES = [{
@@ -3601,7 +3639,7 @@ function App() {
   }
   function runSyncJob(job) {
     if (job.kind === "balance") {
-      var balance = coinsRef.current && coinsRef.current[job.slug] != null ? coinsRef.current[job.slug] : job.balance;
+      var _balance = coinsRef.current && coinsRef.current[job.slug] != null ? coinsRef.current[job.slug] : job.balance;
       var b = job.boosts || boostsRef.current && boostsRef.current[job.slug] || defaultBoost();
       return sbFetch("coin_kids?slug=eq." + encodeURIComponent(job.slug), {
         method: "PATCH",
@@ -3609,7 +3647,7 @@ function App() {
           "Prefer": "return=minimal"
         }),
         body: JSON.stringify({
-          balance: balance,
+          balance: _balance,
           double_earns_left: b.doubleEarnsLeft || 0,
           free_switch: !!b.freeSwitch,
           updated_at: new Date().toISOString()
@@ -3621,7 +3659,7 @@ function App() {
             "Prefer": "return=minimal"
           }),
           body: JSON.stringify({
-            balance: balance,
+            balance: _balance,
             updated_at: new Date().toISOString()
           })
         });
@@ -4578,6 +4616,17 @@ function App() {
   }).filter(Boolean);
   var kidBoost = boosts[kid] || defaultBoost();
   var freeSwitchReady = !!kidBoost.freeSwitch;
+  var balance = coins[kid] || 0;
+  var shopGoal = nextShopGoal(balance);
+  var stackSlots = coinStackSlots(balance, shopGoal);
+  var stackDiscs = function () {
+    var discs = [];
+    var i;
+    for (i = 0; i < stackSlots.filled; i++) discs.push("filled");
+    for (i = 0; i < stackSlots.ghost; i++) discs.push("ghost");
+    return discs;
+  }();
+  var stackHeight = stackDiscs.length ? 30 + (stackDiscs.length - 1) * 10 : 30;
 
   /* ---------- row renderers ---------- */
   var JobRow = function JobRow(_ref3) {
@@ -4756,28 +4805,88 @@ function App() {
     className: "vault",
     ref: vaultRef,
     onClick: openVault
-  }, /*#__PURE__*/React.createElement(Slot, {
-    light: true,
-    src: IMAGES[K.img],
-    label: K.name,
-    style: {
-      width: "56px",
-      height: "56px",
-      borderRadius: "50%"
-    }
-  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "vault-main"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "vault-stack-col"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "lbl"
   }, K.name, "'s coin bank"), /*#__PURE__*/React.createElement("div", {
+    className: "vault-stack-row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "coin-stack",
+    key: "stack-" + kid + "-" + balance,
+    style: {
+      height: stackHeight + "px"
+    },
+    "aria-hidden": "true"
+  }, stackDiscs.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "stack-coin ghost",
+    style: {
+      bottom: 0
+    }
+  }), stackDiscs.map(function (kind, idx) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: kind + "-" + idx,
+      className: "stack-coin " + kind,
+      style: {
+        bottom: idx * 10 + "px",
+        zIndex: idx + 1,
+        WebkitAnimationDelay: idx * 0.03 + "s",
+        animationDelay: idx * 0.03 + "s"
+      }
+    }, kind === "filled" && /*#__PURE__*/React.createElement("span", {
+      className: "stack-star"
+    }, "★"));
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "vault-balance"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "comic big"
-  }, coins[kid]), (kidBoost.doubleEarnsLeft > 0 || kidBoost.freeSwitch) && /*#__PURE__*/React.createElement("div", {
-    className: "boost-pills"
+  }, balance), shopGoal ? /*#__PURE__*/React.createElement("div", {
+    className: "vault-goal"
+  }, balance, " → ", shopGoal.name, " · ", shopGoal.coins) : /*#__PURE__*/React.createElement("div", {
+    className: "vault-goal"
+  }, "Ready for anything!"))), (kidBoost.doubleEarnsLeft > 0 || kidBoost.freeSwitch || powerOwned.length > 0) && /*#__PURE__*/React.createElement("div", {
+    className: "vault-powers",
+    onClick: function onClick(e) {
+      e.stopPropagation();
+      setModal("profile");
+    },
+    role: "button",
+    tabIndex: 0,
+    onKeyDown: function onKeyDown(e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        e.stopPropagation();
+        setModal("profile");
+      }
+    },
+    "aria-label": "Open profile for power-ups"
+  }, (kidBoost.doubleEarnsLeft > 0 || kidBoost.freeSwitch) && /*#__PURE__*/React.createElement("div", {
+    className: "boost-pills vault-boosts"
   }, kidBoost.doubleEarnsLeft > 0 && /*#__PURE__*/React.createElement("span", {
     className: "boost-pill"
   }, "⚡ 2× ×", kidBoost.doubleEarnsLeft), kidBoost.freeSwitch && /*#__PURE__*/React.createElement("span", {
     className: "boost-pill"
-  }, "🎮 Free Switch"))), /*#__PURE__*/React.createElement("div", {
+  }, "🎮 Free Switch")), powerOwned.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "vault-power-chips"
+  }, powerOwned.map(function (p) {
+    return /*#__PURE__*/React.createElement("span", {
+      key: p.id,
+      className: "vault-power-chip" + (p.used ? " used" : ""),
+      title: p.name
+    }, p.icon);
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "vault-hero " + K.cls
+  }, /*#__PURE__*/React.createElement(Slot, {
+    src: IMAGES[K.img],
+    label: K.name,
+    className: "vault-hero-face"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "comic vault-hero-name"
+  }, K.name, " ", K.badge))), /*#__PURE__*/React.createElement("div", {
     className: "tap"
-  }, "Tap the lid", /*#__PURE__*/React.createElement("br", null), "to tip them out ⤵")), pinKid && !modal && /*#__PURE__*/React.createElement("button", {
+  }, "Tap to tip them out ⤵")), pinKid && !modal && /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "kid-pin " + K.cls,
     onClick: function onClick() {
