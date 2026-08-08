@@ -288,6 +288,29 @@ var SAVINGS_SHOP = [{
   sub: "all three boys",
   coins: 250
 }];
+
+/* General hero timer presets (not brushing — no coins) */
+var HERO_TIMER_PRESETS = [{
+  id: "quick",
+  name: "Quick race",
+  secs: 60,
+  icon: "⚡"
+}, {
+  id: "ready",
+  name: "Getting ready",
+  secs: 300,
+  icon: "👕"
+}, {
+  id: "tidy",
+  name: "Tidy race",
+  secs: 600,
+  icon: "🧹"
+}, {
+  id: "focus",
+  name: "Focus time",
+  secs: 900,
+  icon: "📚"
+}];
 var MAX_STACK = 20;
 
 /* Cheapest shop treat the kid cannot afford yet (excludes Mum's Food Tax) */
@@ -791,7 +814,8 @@ function defaultSettings() {
   return {
     coinDropEnabled: true,
     tiltControlsEnabled: true,
-    lastBrushGame: "coinDrop"
+    lastBrushGame: "coinDrop",
+    heroTimerSecs: 300
   };
 }
 function normalizeSettings(raw) {
@@ -799,10 +823,14 @@ function normalizeSettings(raw) {
   if (!raw || _typeof(raw) !== "object") return base;
   var last = "coinDrop";
   if (raw.lastBrushGame === "coinChase") last = "coinChase";else if (raw.lastBrushGame === "mazeDash") last = "mazeDash";
+  var heroSecs = parseInt(raw.heroTimerSecs, 10);
+  if (!isFinite(heroSecs)) heroSecs = base.heroTimerSecs;
+  heroSecs = clamp(heroSecs, 30, 3600);
   return {
     coinDropEnabled: raw.coinDropEnabled !== false,
     tiltControlsEnabled: raw.tiltControlsEnabled !== false,
-    lastBrushGame: last
+    lastBrushGame: last,
+    heroTimerSecs: heroSecs
   };
 }
 function nextBrushGame(last) {
@@ -3239,7 +3267,7 @@ function App() {
   var _useState69 = useState(null),
     _useState70 = _slicedToArray(_useState69, 2),
     modal = _useState70[0],
-    setModal = _useState70[1]; // vault | timer | history | settings | profile | unlock | coinDrop
+    setModal = _useState70[1]; // vault | timer | heroTimer | history | settings | profile | unlock | coinDrop
   var _useState71 = useState([]),
     _useState72 = _slicedToArray(_useState71, 2),
     unlockQueue = _useState72[0],
@@ -3261,18 +3289,38 @@ function App() {
     _useState80 = _slicedToArray(_useState79, 2),
     done = _useState80[0],
     setDone = _useState80[1];
-  var _useState81 = useState(null),
+  var _useState81 = useState(initial.settings && initial.settings.heroTimerSecs || 300),
     _useState82 = _slicedToArray(_useState81, 2),
-    toast = _useState82[0],
-    setToast = _useState82[1];
-  var _useState83 = useState(supabaseReady() ? "syncing" : "local"),
+    heroSecs = _useState82[0],
+    setHeroSecs = _useState82[1];
+  var _useState83 = useState(initial.settings && initial.settings.heroTimerSecs || 300),
     _useState84 = _slicedToArray(_useState83, 2),
-    cloud = _useState84[0],
-    setCloud = _useState84[1];
-  var _useState85 = useState(null),
+    heroTotal = _useState84[0],
+    setHeroTotal = _useState84[1];
+  var _useState85 = useState(false),
     _useState86 = _slicedToArray(_useState85, 2),
-    focusedRow = _useState86[0],
-    setFocusedRow = _useState86[1];
+    heroRunning = _useState86[0],
+    setHeroRunning = _useState86[1];
+  var _useState87 = useState(false),
+    _useState88 = _slicedToArray(_useState87, 2),
+    heroDone = _useState88[0],
+    setHeroDone = _useState88[1];
+  var _useState89 = useState("Hero Timer"),
+    _useState90 = _slicedToArray(_useState89, 2),
+    heroLabel = _useState90[0],
+    setHeroLabel = _useState90[1];
+  var _useState91 = useState(null),
+    _useState92 = _slicedToArray(_useState91, 2),
+    toast = _useState92[0],
+    setToast = _useState92[1];
+  var _useState93 = useState(supabaseReady() ? "syncing" : "local"),
+    _useState94 = _slicedToArray(_useState93, 2),
+    cloud = _useState94[0],
+    setCloud = _useState94[1];
+  var _useState95 = useState(null),
+    _useState96 = _slicedToArray(_useState95, 2),
+    focusedRow = _useState96[0],
+    setFocusedRow = _useState96[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -3285,10 +3333,11 @@ function App() {
   var pendingRewardRef = useRef(initial.pendingReward || null);
   var awardedRewardIdsRef = useRef({});
   var timerCompletedRef = useRef(false);
+  var heroTimerCompletedRef = useRef(false);
   var deferUnlockModalRef = useRef(false);
   var recoveryDoneRef = useRef(false);
   var tune = useBrushingTune();
-  useBrushScreenWakeLock(running);
+  useBrushScreenWakeLock(running || heroRunning);
   useEffect(function () {
     coinsRef.current = coins;
     logRef.current = log;
@@ -4376,6 +4425,48 @@ function App() {
     setTimerJob(null);
     timerCompletedRef.current = false;
   };
+  var setHeroTimerDuration = function setHeroTimerDuration(nextSecs, label) {
+    var clamped = clamp(nextSecs | 0, 30, 3600);
+    setSettings(function (s) {
+      return Object.assign({}, s, {
+        heroTimerSecs: clamped
+      });
+    });
+    if (!heroRunning) {
+      setHeroSecs(clamped);
+      setHeroTotal(clamped);
+      setHeroDone(false);
+    }
+    if (label) setHeroLabel(label);
+  };
+  var openHeroTimer = function openHeroTimer(preset) {
+    var duration = preset ? preset.secs : settings.heroTimerSecs || heroTotal || 300;
+    var label = preset ? preset.name : heroLabel && heroLabel !== "Hero Timer" ? heroLabel : "Hero Timer";
+    var clamped = clamp(duration | 0, 30, 3600);
+    heroTimerCompletedRef.current = false;
+    setHeroLabel(label);
+    setHeroTotal(clamped);
+    setHeroSecs(clamped);
+    setHeroRunning(false);
+    setHeroDone(false);
+    setSettings(function (s) {
+      return Object.assign({}, s, {
+        heroTimerSecs: clamped
+      });
+    });
+    setModal("heroTimer");
+  };
+  var closeHeroTimer = function closeHeroTimer() {
+    tune.stop();
+    setHeroRunning(false);
+    setModal(null);
+    heroTimerCompletedRef.current = false;
+  };
+  var nudgeHeroDuration = function nudgeHeroDuration(delta) {
+    if (heroRunning) return;
+    var base = settings.heroTimerSecs || heroTotal || 300;
+    setHeroTimerDuration(base + delta);
+  };
   useEffect(function () {
     if (!running) return;
     if (secs <= 0) {
@@ -4427,6 +4518,26 @@ function App() {
       clearTimeout(t);
     };
   }, [running, secs]);
+  useEffect(function () {
+    if (!heroRunning) return;
+    if (heroSecs <= 0) {
+      if (heroTimerCompletedRef.current) return;
+      heroTimerCompletedRef.current = true;
+      setHeroRunning(false);
+      tune.stop();
+      tune.fanfare();
+      setHeroDone(true);
+      return;
+    }
+    var t = setTimeout(function () {
+      setHeroSecs(function (s) {
+        return s - 1;
+      });
+    }, 1000);
+    return function () {
+      clearTimeout(t);
+    };
+  }, [heroRunning, heroSecs]);
 
   /* Resume unresolved brushing games on boot — do not auto-award away the play */
   useEffect(function () {
@@ -4570,10 +4681,10 @@ function App() {
     setFocusedRow(null);
   };
   var vaultRef = useRef(null);
-  var _useState87 = useState(false),
-    _useState88 = _slicedToArray(_useState87, 2),
-    pinKid = _useState88[0],
-    setPinKid = _useState88[1];
+  var _useState97 = useState(false),
+    _useState98 = _slicedToArray(_useState97, 2),
+    pinKid = _useState98[0],
+    setPinKid = _useState98[1];
   useEffect(function () {
     var el = vaultRef.current;
     if (!el) return;
@@ -4597,6 +4708,8 @@ function App() {
     return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   };
   var pct = 1 - secs / 120;
+  var heroPct = heroTotal > 0 ? 1 - heroSecs / heroTotal : 0;
+  var heroDurationSecs = settings.heroTimerSecs || 300;
   var profileStats = kidStats(kid, log, coins);
   var kidUnlocks = unlocks[kid] || [];
   var unlockedIds = {};
@@ -5016,7 +5129,81 @@ function App() {
       item: i,
       locked: !weekend
     });
-  })))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("section", {
+    className: "panel hero-timer-panel"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "panel-head"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "comic ptitle outline-2"
+  }, "Hero Timer"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "1.7rem"
+    }
+  }, "⏱")), /*#__PURE__*/React.createElement("div", {
+    className: "panel-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "band navy comic"
+  }, "★ Race the clock — no coins, just hustle ★"), /*#__PURE__*/React.createElement("div", {
+    className: "hero-timer-presets"
+  }, HERO_TIMER_PRESETS.map(function (p) {
+    var active = heroDurationSecs === p.secs && !heroRunning;
+    return /*#__PURE__*/React.createElement("button", {
+      key: p.id,
+      type: "button",
+      className: "hero-preset" + (active ? " active" : ""),
+      onClick: function onClick() {
+        setHeroTimerDuration(p.secs, p.name);
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "hero-preset-ico"
+    }, p.icon), /*#__PURE__*/React.createElement("span", {
+      className: "hero-preset-name"
+    }, p.name), /*#__PURE__*/React.createElement("span", {
+      className: "hero-preset-time"
+    }, mmss(p.secs)));
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "hero-timer-custom"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "hero-timer-custom-lbl"
+  }, "Set your time"), /*#__PURE__*/React.createElement("div", {
+    className: "hero-timer-adjust"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "hero-nudge",
+    onClick: function onClick() {
+      nudgeHeroDuration(-60);
+    },
+    "aria-label": "Minus one minute"
+  }, "−1m"), /*#__PURE__*/React.createElement("div", {
+    className: "comic hero-timer-display"
+  }, mmss(heroDurationSecs)), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "hero-nudge",
+    onClick: function onClick() {
+      nudgeHeroDuration(60);
+    },
+    "aria-label": "Plus one minute"
+  }, "+1m")), /*#__PURE__*/React.createElement("div", {
+    className: "hero-timer-fine"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "hero-nudge fine",
+    onClick: function onClick() {
+      nudgeHeroDuration(-30);
+    }
+  }, "−30s"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "hero-nudge fine",
+    onClick: function onClick() {
+      nudgeHeroDuration(30);
+    }
+  }, "+30s"))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn go hero-timer-start",
+    onClick: function onClick() {
+      openHeroTimer();
+    }
+  }, "▶ Start ", heroLabel && heroLabel !== "Hero Timer" ? heroLabel : "timer"))), /*#__PURE__*/React.createElement("div", {
     className: "bottom"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "hero-art"
@@ -5202,6 +5389,104 @@ function App() {
   }, "⏸ Pause"), /*#__PURE__*/React.createElement("button", {
     className: "btn close",
     onClick: closeTimer
+  }, "Cancel"))))), modal === "heroTimer" && /*#__PURE__*/React.createElement("div", {
+    className: "modal"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet hero-timer-sheet",
+    onClick: function onClick(e) {
+      return e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-head hero-timer-head"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic outline-2"
+  }, "⏱ ", heroLabel)), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-body"
+  }, heroDone ? /*#__PURE__*/React.createElement("div", {
+    className: "celebrate"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "spin",
+    style: {
+      fontSize: "3.5rem"
+    }
+  }, "💥"), /*#__PURE__*/React.createElement("div", {
+    className: "comic pop"
+  }, "Time's up, ", K.name, "!"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 900,
+      marginTop: "6px"
+    }
+  }, "Hero hustle complete — nice work!"), /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    onClick: closeHeroTimer
+  }, "Awesome!")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "hero-timer-track",
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "hero-timer-fill",
+    style: {
+      width: heroPct * 100 + "%"
+    }
+  })), /*#__PURE__*/React.createElement("svg", {
+    className: "timer-ring hero-timer-ring",
+    width: "180",
+    height: "180",
+    viewBox: "0 0 120 120"
+  }, /*#__PURE__*/React.createElement("rect", {
+    x: "10",
+    y: "10",
+    width: "100",
+    height: "100",
+    rx: "18",
+    fill: "none",
+    stroke: "#00000022",
+    strokeWidth: "10"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: "10",
+    y: "10",
+    width: "100",
+    height: "100",
+    rx: "18",
+    fill: "none",
+    stroke: "#e08e00",
+    strokeWidth: "10",
+    strokeLinecap: "round",
+    strokeDasharray: 400,
+    strokeDashoffset: 400 * (1 - heroPct),
+    transform: "rotate(-90 60 60)"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "timer-num hero-timer-num"
+  }, mmss(heroSecs)), /*#__PURE__*/React.createElement("div", {
+    className: "brush-tip hero-timer-tip"
+  }, heroRunning ? "Superhero music on — keep moving! 🎵" : "Pick a time if you need, then hit start."), !heroRunning && /*#__PURE__*/React.createElement("div", {
+    className: "hero-timer-adjust in-modal"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "hero-nudge",
+    onClick: function onClick() {
+      nudgeHeroDuration(-60);
+    }
+  }, "−1m"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "hero-nudge",
+    onClick: function onClick() {
+      nudgeHeroDuration(60);
+    }
+  }, "+1m")), !heroRunning ? /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    onClick: function onClick() {
+      setHeroRunning(true);
+      tune.start();
+    }
+  }, "▶ Start") : /*#__PURE__*/React.createElement("button", {
+    className: "btn stop",
+    onClick: function onClick() {
+      tune.pause();
+      setHeroRunning(false);
+    }
+  }, "⏸ Pause"), /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    onClick: closeHeroTimer
   }, "Cancel"))))), modal === "coinDrop" && pendingReward && /*#__PURE__*/React.createElement(CoinDropGame, {
     kid: Object.assign({}, KIDS[pendingReward.kidId] || K, {
       id: pendingReward.kidId || kid

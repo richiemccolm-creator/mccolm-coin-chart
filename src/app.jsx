@@ -153,6 +153,14 @@ const SAVINGS_SHOP = [
   {id:"cinema",    name:"Cinema trip",      sub:"all three boys", coins:250}
 ];
 
+/* General hero timer presets (not brushing — no coins) */
+const HERO_TIMER_PRESETS = [
+  {id:"quick",  name:"Quick race",    secs:60,  icon:"⚡"},
+  {id:"ready",  name:"Getting ready", secs:300, icon:"👕"},
+  {id:"tidy",   name:"Tidy race",     secs:600, icon:"🧹"},
+  {id:"focus",  name:"Focus time",    secs:900, icon:"📚"}
+];
+
 const MAX_STACK = 20;
 
 /* Cheapest shop treat the kid cannot afford yet (excludes Mum's Food Tax) */
@@ -412,7 +420,12 @@ function normalizeUnlockList(list){
 }
 
 function defaultSettings(){
-  return {coinDropEnabled:true, tiltControlsEnabled:true, lastBrushGame:"coinDrop"};
+  return {
+    coinDropEnabled:true,
+    tiltControlsEnabled:true,
+    lastBrushGame:"coinDrop",
+    heroTimerSecs:300
+  };
 }
 
 function normalizeSettings(raw){
@@ -421,10 +434,14 @@ function normalizeSettings(raw){
   var last = "coinDrop";
   if(raw.lastBrushGame === "coinChase") last = "coinChase";
   else if(raw.lastBrushGame === "mazeDash") last = "mazeDash";
+  var heroSecs = parseInt(raw.heroTimerSecs, 10);
+  if(!isFinite(heroSecs)) heroSecs = base.heroTimerSecs;
+  heroSecs = clamp(heroSecs, 30, 3600);
   return {
     coinDropEnabled: raw.coinDropEnabled !== false,
     tiltControlsEnabled: raw.tiltControlsEnabled !== false,
-    lastBrushGame: last
+    lastBrushGame: last,
+    heroTimerSecs: heroSecs
   };
 }
 
@@ -2675,13 +2692,18 @@ function App(){
   const [boosts,setBoosts] = useState(initial.boosts);
   const [settings,setSettings] = useState(initial.settings || defaultSettings());
   const [pendingReward,setPendingReward] = useState(initial.pendingReward || null);
-  const [modal,setModal] = useState(null); // vault | timer | history | settings | profile | unlock | coinDrop
+  const [modal,setModal] = useState(null); // vault | timer | heroTimer | history | settings | profile | unlock | coinDrop
   const [unlockQueue,setUnlockQueue] = useState([]);
   const unlockQueueRef = useRef([]);
   const [timerJob,setTimerJob] = useState(null);
   const [secs,setSecs] = useState(120);
   const [running,setRunning] = useState(false);
   const [done,setDone] = useState(false);
+  const [heroSecs,setHeroSecs] = useState(initial.settings && initial.settings.heroTimerSecs || 300);
+  const [heroTotal,setHeroTotal] = useState(initial.settings && initial.settings.heroTimerSecs || 300);
+  const [heroRunning,setHeroRunning] = useState(false);
+  const [heroDone,setHeroDone] = useState(false);
+  const [heroLabel,setHeroLabel] = useState("Hero Timer");
   const [toast,setToast] = useState(null);
   const [cloud,setCloud] = useState(supabaseReady() ? "syncing" : "local");
   const [focusedRow,setFocusedRow] = useState(null);
@@ -2697,10 +2719,11 @@ function App(){
   const pendingRewardRef = useRef(initial.pendingReward || null);
   const awardedRewardIdsRef = useRef({});
   const timerCompletedRef = useRef(false);
+  const heroTimerCompletedRef = useRef(false);
   const deferUnlockModalRef = useRef(false);
   const recoveryDoneRef = useRef(false);
   const tune = useBrushingTune();
-  useBrushScreenWakeLock(running);
+  useBrushScreenWakeLock(running || heroRunning);
 
   useEffect(function(){
     coinsRef.current = coins;
@@ -3737,6 +3760,52 @@ function App(){
     timerCompletedRef.current = false;
   };
 
+  const setHeroTimerDuration = function(nextSecs, label){
+    const clamped = clamp(nextSecs|0, 30, 3600);
+    setSettings(function(s){
+      return Object.assign({}, s, {heroTimerSecs: clamped});
+    });
+    if(!heroRunning){
+      setHeroSecs(clamped);
+      setHeroTotal(clamped);
+      setHeroDone(false);
+    }
+    if(label) setHeroLabel(label);
+  };
+
+  const openHeroTimer = function(preset){
+    const duration = preset
+      ? preset.secs
+      : (settings.heroTimerSecs || heroTotal || 300);
+    const label = preset
+      ? preset.name
+      : (heroLabel && heroLabel !== "Hero Timer" ? heroLabel : "Hero Timer");
+    const clamped = clamp(duration|0, 30, 3600);
+    heroTimerCompletedRef.current = false;
+    setHeroLabel(label);
+    setHeroTotal(clamped);
+    setHeroSecs(clamped);
+    setHeroRunning(false);
+    setHeroDone(false);
+    setSettings(function(s){
+      return Object.assign({}, s, {heroTimerSecs: clamped});
+    });
+    setModal("heroTimer");
+  };
+
+  const closeHeroTimer = function(){
+    tune.stop();
+    setHeroRunning(false);
+    setModal(null);
+    heroTimerCompletedRef.current = false;
+  };
+
+  const nudgeHeroDuration = function(delta){
+    if(heroRunning) return;
+    const base = settings.heroTimerSecs || heroTotal || 300;
+    setHeroTimerDuration(base + delta);
+  };
+
   useEffect(function(){
     if(!running) return;
     if(secs<=0){
@@ -3786,6 +3855,21 @@ function App(){
     const t=setTimeout(function(){ setSecs(function(s){ return s-1; }); },1000);
     return function(){ clearTimeout(t); };
   },[running,secs]);
+
+  useEffect(function(){
+    if(!heroRunning) return;
+    if(heroSecs<=0){
+      if(heroTimerCompletedRef.current) return;
+      heroTimerCompletedRef.current = true;
+      setHeroRunning(false);
+      tune.stop();
+      tune.fanfare();
+      setHeroDone(true);
+      return;
+    }
+    const t=setTimeout(function(){ setHeroSecs(function(s){ return s-1; }); },1000);
+    return function(){ clearTimeout(t); };
+  },[heroRunning,heroSecs]);
 
   /* Resume unresolved brushing games on boot — do not auto-award away the play */
   useEffect(function(){
@@ -3902,6 +3986,8 @@ function App(){
 
   const mmss=(s)=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
   const pct = 1-(secs/120);
+  const heroPct = heroTotal > 0 ? 1 - (heroSecs / heroTotal) : 0;
+  const heroDurationSecs = settings.heroTimerSecs || 300;
 
   const profileStats = kidStats(kid, log, coins);
   const kidUnlocks = unlocks[kid] || [];
@@ -4213,6 +4299,63 @@ function App(){
         </section>
       </div>
 
+      {/* ---------------- HERO TIMER SECTION ---------------- */}
+      <section className="panel hero-timer-panel">
+        <div className="panel-head">
+          <div className="comic ptitle outline-2">Hero Timer</div>
+          <div style={{fontSize:"1.7rem"}}>⏱</div>
+        </div>
+        <div className="panel-body">
+          <div className="band navy comic">★ Race the clock — no coins, just hustle ★</div>
+          <div className="hero-timer-presets">
+            {HERO_TIMER_PRESETS.map(function(p){
+              const active = heroDurationSecs === p.secs && !heroRunning;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={"hero-preset"+(active?" active":"")}
+                  onClick={function(){ setHeroTimerDuration(p.secs, p.name); }}
+                >
+                  <span className="hero-preset-ico">{p.icon}</span>
+                  <span className="hero-preset-name">{p.name}</span>
+                  <span className="hero-preset-time">{mmss(p.secs)}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="hero-timer-custom">
+            <div className="hero-timer-custom-lbl">Set your time</div>
+            <div className="hero-timer-adjust">
+              <button
+                type="button"
+                className="hero-nudge"
+                onClick={function(){ nudgeHeroDuration(-60); }}
+                aria-label="Minus one minute"
+              >−1m</button>
+              <div className="comic hero-timer-display">{mmss(heroDurationSecs)}</div>
+              <button
+                type="button"
+                className="hero-nudge"
+                onClick={function(){ nudgeHeroDuration(60); }}
+                aria-label="Plus one minute"
+              >+1m</button>
+            </div>
+            <div className="hero-timer-fine">
+              <button type="button" className="hero-nudge fine" onClick={function(){ nudgeHeroDuration(-30); }}>−30s</button>
+              <button type="button" className="hero-nudge fine" onClick={function(){ nudgeHeroDuration(30); }}>+30s</button>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn go hero-timer-start"
+            onClick={function(){ openHeroTimer(); }}
+          >
+            ▶ Start {heroLabel && heroLabel !== "Hero Timer" ? heroLabel : "timer"}
+          </button>
+        </div>
+      </section>
+
       {/* ---------------- BOTTOM ---------------- */}
       <div className="bottom">
         <div>
@@ -4290,6 +4433,59 @@ function App(){
                     ? <button className="btn go" onClick={()=>{setRunning(true);tune.start();}}>▶ Start brushing</button>
                     : <button className="btn stop" onClick={()=>{tune.pause();setRunning(false);}}>⏸ Pause</button>}
                   <button className="btn close" onClick={closeTimer}>Cancel</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- HERO TIMER MODAL ---------------- */}
+      {modal==="heroTimer" && (
+        <div className="modal">
+          <div className="sheet hero-timer-sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-head hero-timer-head">
+              <h2 className="comic outline-2">⏱ {heroLabel}</h2>
+            </div>
+            <div className="sheet-body">
+              {heroDone ? (
+                <div className="celebrate">
+                  <div className="spin" style={{fontSize:"3.5rem"}}>💥</div>
+                  <div className="comic pop">Time's up, {K.name}!</div>
+                  <div style={{fontWeight:900,marginTop:"6px"}}>Hero hustle complete — nice work!</div>
+                  <button className="btn go" onClick={closeHeroTimer}>Awesome!</button>
+                </div>
+              ):(
+                <>
+                  <div className="hero-timer-track" aria-hidden="true">
+                    <div className="hero-timer-fill" style={{width: (heroPct * 100) + "%"}} />
+                  </div>
+                  <svg className="timer-ring hero-timer-ring" width="180" height="180" viewBox="0 0 120 120">
+                    <rect x="10" y="10" width="100" height="100" rx="18" fill="none" stroke="#00000022" strokeWidth="10"/>
+                    <rect
+                      x="10" y="10" width="100" height="100" rx="18" fill="none"
+                      stroke="#e08e00" strokeWidth="10" strokeLinecap="round"
+                      strokeDasharray={400}
+                      strokeDashoffset={400 * (1 - heroPct)}
+                      transform="rotate(-90 60 60)"
+                    />
+                  </svg>
+                  <div className="timer-num hero-timer-num">{mmss(heroSecs)}</div>
+                  <div className="brush-tip hero-timer-tip">
+                    {heroRunning
+                      ? "Superhero music on — keep moving! 🎵"
+                      : "Pick a time if you need, then hit start."}
+                  </div>
+                  {!heroRunning && (
+                    <div className="hero-timer-adjust in-modal">
+                      <button type="button" className="hero-nudge" onClick={function(){ nudgeHeroDuration(-60); }}>−1m</button>
+                      <button type="button" className="hero-nudge" onClick={function(){ nudgeHeroDuration(60); }}>+1m</button>
+                    </div>
+                  )}
+                  {!heroRunning
+                    ? <button className="btn go" onClick={function(){ setHeroRunning(true); tune.start(); }}>▶ Start</button>
+                    : <button className="btn stop" onClick={function(){ tune.pause(); setHeroRunning(false); }}>⏸ Pause</button>}
+                  <button className="btn close" onClick={closeHeroTimer}>Cancel</button>
                 </>
               )}
             </div>

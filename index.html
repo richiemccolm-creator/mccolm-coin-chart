@@ -377,6 +377,11 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
 .panel{border:5px solid #000;border-radius:16px;overflow:hidden;box-shadow:0 8px 0 rgba(0,0,0,.55)}
 .panel.earn{background:#d62828;background:var(--red)}
 .panel.shop{background:#1560bd;background:var(--blue)}
+.panel.hero-timer-panel{
+  background:#0a2472;background:var(--navy);
+  margin-top:16px;
+}
+.band.navy{background:#0a2472;background:var(--navy);color:#ffc42e}
 .panel-head{
   display:-webkit-box;display:-webkit-flex;display:flex;
   -webkit-box-align:center;-webkit-align-items:center;align-items:center;
@@ -741,6 +746,90 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
 .timer-num{font-family:'Luckiest Guy',Impact,sans-serif;font-size:4.5rem;text-align:center;color:#1a7a34;color:var(--green);line-height:1}
 .timer-ring{display:block;margin:0 auto}
 .brush-tip{text-align:center;font-weight:800;font-size:.95rem;color:#444;margin-top:4px}
+
+/* ---------- HERO TIMER (general, adjustable) ---------- */
+.hero-timer-presets{
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-flex-wrap:wrap;flex-wrap:wrap;
+  margin:0 -4px 10px;
+}
+.hero-preset{
+  -webkit-box-flex:1;-webkit-flex:1 1 42%;flex:1 1 42%;
+  min-width:120px;margin:4px;
+  border:3px solid #000;border-radius:12px;background:#fff;
+  box-shadow:0 3px 0 rgba(0,0,0,.35);cursor:pointer;
+  padding:8px 10px;text-align:left;
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-align:center;-webkit-align-items:center;align-items:center;
+}
+.hero-preset > * + *{margin-left:8px}
+.hero-preset:active{-webkit-transform:translateY(2px);transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.hero-preset.active{
+  background:#fff3b0;border-color:#e08e00;
+  box-shadow:0 3px 0 #c97a00;
+}
+.hero-preset-ico{font-size:1.4rem;line-height:1;-webkit-flex:none;flex:none}
+.hero-preset-name{
+  -webkit-box-flex:1;-webkit-flex:1;flex:1;min-width:0;
+  font-weight:900;font-size:.82rem;color:#141414;line-height:1.15;
+}
+.hero-preset-time{
+  -webkit-flex:none;flex:none;
+  font-family:'Luckiest Guy',Impact,sans-serif;font-size:.95rem;color:#0a2472;
+}
+.hero-timer-custom{
+  border:3px dashed #000;border-radius:12px;background:rgba(10,36,114,.06);
+  padding:10px;margin-bottom:10px;text-align:center;
+}
+.hero-timer-custom-lbl{
+  font-weight:900;font-size:.72rem;text-transform:uppercase;letter-spacing:1px;color:#0a2472;margin-bottom:6px;
+}
+.hero-timer-adjust{
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-align:center;-webkit-align-items:center;align-items:center;
+  -webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;
+}
+.hero-timer-adjust > * + *{margin-left:10px}
+.hero-timer-adjust.in-modal{margin:8px 0 4px}
+.hero-timer-display{
+  font-size:2.4rem;color:#0a2472;line-height:1;min-width:4.2rem;text-align:center;
+}
+.hero-nudge{
+  border:3px solid #000;border-radius:10px;background:#ffc42e;color:#141414;
+  font-family:'Nunito',Helvetica,sans-serif;font-weight:900;font-size:.85rem;
+  padding:8px 12px;cursor:pointer;box-shadow:0 3px 0 #000;
+}
+.hero-nudge:active{-webkit-transform:translateY(2px);transform:translateY(2px);box-shadow:0 1px 0 #000}
+.hero-nudge.fine{background:#fff;font-size:.75rem;padding:6px 10px;box-shadow:0 2px 0 #000}
+.hero-timer-fine{
+  margin-top:8px;
+  display:-webkit-box;display:-webkit-flex;display:flex;
+  -webkit-box-pack:center;-webkit-justify-content:center;justify-content:center;
+}
+.hero-timer-fine > * + *{margin-left:8px}
+.hero-timer-start{margin-top:4px}
+.hero-timer-sheet .sheet-body{background:#fff8e8}
+.hero-timer-head{
+  background:#0a2472;background:var(--navy);
+  background:-webkit-linear-gradient(290deg,#1a3fa0,#0a2472 55%,#04113d);
+  background:linear-gradient(160deg,#1a3fa0,#0a2472 55%,#04113d);
+}
+.hero-timer-num{color:#e08e00;color:var(--gold-deep)}
+.hero-timer-tip{color:#0a2472}
+.hero-timer-track{
+  height:14px;border:3px solid #000;border-radius:999px;background:#111;
+  overflow:hidden;margin:0 8px 10px;box-shadow:inset 0 2px 0 rgba(255,255,255,.15);
+}
+.hero-timer-fill{
+  height:100%;width:0;
+  background:#ffc42e;
+  background:-webkit-linear-gradient(left,#ffd75e,#e08e00);
+  background:linear-gradient(90deg,#ffd75e,#e08e00);
+  -webkit-transition:width .25s linear;transition:width .25s linear;
+}
+.hero-timer-ring{margin-bottom:2px}
+.hero-timer-sheet .celebrate .pop{color:#e08e00;color:var(--gold-deep)}
+
 .celebrate{text-align:center;padding:10px 0}
 .celebrate .pop{font-size:1.8rem;color:#1a7a34;color:var(--green);-webkit-animation:pop .5s ease-out;animation:pop .5s ease-out}
 @-webkit-keyframes pop{0%{-webkit-transform:scale(.4);opacity:0}60%{-webkit-transform:scale(1.18)}100%{-webkit-transform:scale(1);opacity:1}}
