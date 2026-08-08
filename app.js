@@ -143,6 +143,9 @@ var KIDS = {
     badge: "✊"
   }
 };
+
+/* Equal thirds on the brush-first spinner (clockwise from top) */
+var BRUSH_WHEEL_ORDER = ["sam", "isaac", "ben"];
 var EVERYDAY_JOBS = [{
   id: "brush-am",
   name: "Brush teeth",
@@ -3267,7 +3270,7 @@ function App() {
   var _useState69 = useState(null),
     _useState70 = _slicedToArray(_useState69, 2),
     modal = _useState70[0],
-    setModal = _useState70[1]; // vault | timer | heroTimer | history | settings | profile | unlock | coinDrop
+    setModal = _useState70[1]; // vault | timer | heroTimer | brushWheel | history | settings | profile | unlock | coinDrop
   var _useState71 = useState([]),
     _useState72 = _slicedToArray(_useState71, 2),
     unlockQueue = _useState72[0],
@@ -3309,18 +3312,30 @@ function App() {
     _useState90 = _slicedToArray(_useState89, 2),
     heroLabel = _useState90[0],
     setHeroLabel = _useState90[1];
-  var _useState91 = useState(null),
+  var _useState91 = useState(0),
     _useState92 = _slicedToArray(_useState91, 2),
-    toast = _useState92[0],
-    setToast = _useState92[1];
-  var _useState93 = useState(supabaseReady() ? "syncing" : "local"),
+    wheelRot = _useState92[0],
+    setWheelRot = _useState92[1];
+  var _useState93 = useState(false),
     _useState94 = _slicedToArray(_useState93, 2),
-    cloud = _useState94[0],
-    setCloud = _useState94[1];
+    wheelSpinning = _useState94[0],
+    setWheelSpinning = _useState94[1];
   var _useState95 = useState(null),
     _useState96 = _slicedToArray(_useState95, 2),
-    focusedRow = _useState96[0],
-    setFocusedRow = _useState96[1];
+    wheelWinner = _useState96[0],
+    setWheelWinner = _useState96[1];
+  var _useState97 = useState(null),
+    _useState98 = _slicedToArray(_useState97, 2),
+    toast = _useState98[0],
+    setToast = _useState98[1];
+  var _useState99 = useState(supabaseReady() ? "syncing" : "local"),
+    _useState100 = _slicedToArray(_useState99, 2),
+    cloud = _useState100[0],
+    setCloud = _useState100[1];
+  var _useState101 = useState(null),
+    _useState102 = _slicedToArray(_useState101, 2),
+    focusedRow = _useState102[0],
+    setFocusedRow = _useState102[1];
   var canvasRef = useRef(null);
   var kidIdsRef = useRef({});
   var hydratedRef = useRef(false);
@@ -3334,6 +3349,8 @@ function App() {
   var awardedRewardIdsRef = useRef({});
   var timerCompletedRef = useRef(false);
   var heroTimerCompletedRef = useRef(false);
+  var wheelRotRef = useRef(0);
+  var wheelWinnerIdxRef = useRef(null);
   var deferUnlockModalRef = useRef(false);
   var recoveryDoneRef = useRef(false);
   var tune = useBrushingTune();
@@ -4467,6 +4484,54 @@ function App() {
     var base = settings.heroTimerSecs || heroTotal || 300;
     setHeroTimerDuration(base + delta);
   };
+  var openBrushWheel = function openBrushWheel() {
+    setWheelWinner(null);
+    wheelWinnerIdxRef.current = null;
+    setWheelSpinning(false);
+    setModal("brushWheel");
+  };
+  var closeBrushWheel = function closeBrushWheel() {
+    setWheelSpinning(false);
+    setModal(null);
+  };
+  var spinBrushWheel = function spinBrushWheel() {
+    if (wheelSpinning) return;
+    var n = BRUSH_WHEEL_ORDER.length;
+    var slice = 360 / n;
+    var winnerIdx = Math.floor(Math.random() * n);
+    var jitter = (Math.random() - 0.5) * (slice * 0.55);
+    var center = winnerIdx * slice + slice / 2 + jitter;
+    var spins = 5 + Math.floor(Math.random() * 3);
+    var current = wheelRotRef.current;
+    var currentMod = (current % 360 + 360) % 360;
+    var desiredMod = ((360 - center) % 360 + 360) % 360;
+    var delta = desiredMod - currentMod;
+    if (delta < 0) delta += 360;
+    var nextRot = current + spins * 360 + delta;
+    wheelWinnerIdxRef.current = winnerIdx;
+    setWheelWinner(null);
+    setWheelSpinning(true);
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        wheelRotRef.current = nextRot;
+        setWheelRot(nextRot);
+      });
+    });
+  };
+  var onBrushWheelTransitionEnd = function onBrushWheelTransitionEnd(e) {
+    if (!e || e.propertyName !== "transform") return;
+    if (!wheelSpinning) return;
+    var idx = wheelWinnerIdxRef.current;
+    if (idx == null) return;
+    var winnerKey = BRUSH_WHEEL_ORDER[idx];
+    setWheelSpinning(false);
+    setWheelWinner(winnerKey);
+    setKid(winnerKey);
+    setFocusedRow(null);
+    try {
+      tune.fanfare();
+    } catch (err) {}
+  };
   useEffect(function () {
     if (!running) return;
     if (secs <= 0) {
@@ -4681,10 +4746,10 @@ function App() {
     setFocusedRow(null);
   };
   var vaultRef = useRef(null);
-  var _useState97 = useState(false),
-    _useState98 = _slicedToArray(_useState97, 2),
-    pinKid = _useState98[0],
-    setPinKid = _useState98[1];
+  var _useState103 = useState(false),
+    _useState104 = _slicedToArray(_useState103, 2),
+    pinKid = _useState104[0],
+    setPinKid = _useState104[1];
   useEffect(function () {
     var el = vaultRef.current;
     if (!el) return;
@@ -5203,7 +5268,34 @@ function App() {
     onClick: function onClick() {
       openHeroTimer();
     }
-  }, "▶ Start ", heroLabel && heroLabel !== "Hero Timer" ? heroLabel : "timer"))), /*#__PURE__*/React.createElement("div", {
+  }, "▶ Start ", heroLabel && heroLabel !== "Hero Timer" ? heroLabel : "timer"))), /*#__PURE__*/React.createElement("section", {
+    className: "panel brush-wheel-panel"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "panel-head"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "comic ptitle outline-2"
+  }, "Who Brushes First?"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "1.7rem"
+    }
+  }, "🪥")), /*#__PURE__*/React.createElement("div", {
+    className: "panel-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "band purple comic"
+  }, "★ Spin the wheel — fair and square ★"), /*#__PURE__*/React.createElement("p", {
+    className: "brush-wheel-blurb"
+  }, "No more arguments! Spin to see who grabs the toothbrush first."), /*#__PURE__*/React.createElement("div", {
+    className: "brush-wheel-mini",
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "brush-wheel-mini-pointer"
+  }, "▼"), /*#__PURE__*/React.createElement("div", {
+    className: "brush-wheel-disc mini"
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn go brush-wheel-open",
+    onClick: openBrushWheel
+  }, "🎡 Spin the wheel"))), /*#__PURE__*/React.createElement("div", {
     className: "bottom"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "hero-art"
@@ -5487,7 +5579,98 @@ function App() {
   }, "⏸ Pause"), /*#__PURE__*/React.createElement("button", {
     className: "btn close",
     onClick: closeHeroTimer
-  }, "Cancel"))))), modal === "coinDrop" && pendingReward && /*#__PURE__*/React.createElement(CoinDropGame, {
+  }, "Cancel"))))), modal === "brushWheel" && /*#__PURE__*/React.createElement("div", {
+    className: "modal"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet brush-wheel-sheet",
+    onClick: function onClick(e) {
+      return e.stopPropagation();
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sheet-head brush-wheel-head"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "comic outline-2"
+  }, "🎡 Who Brushes First?")), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "brush-wheel-stage"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "brush-wheel-pointer",
+    "aria-hidden": "true"
+  }, "▼"), /*#__PURE__*/React.createElement("div", {
+    className: "brush-wheel-disc-wrap"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "brush-wheel-disc" + (wheelSpinning ? " is-spinning" : ""),
+    style: {
+      WebkitTransform: "rotate(" + wheelRot + "deg)",
+      transform: "rotate(" + wheelRot + "deg)"
+    },
+    onTransitionEnd: onBrushWheelTransitionEnd
+  }, BRUSH_WHEEL_ORDER.map(function (key, i) {
+    var k = KIDS[key];
+    var ang = i * 120 + 60;
+    return /*#__PURE__*/React.createElement("div", {
+      key: key,
+      className: "brush-wheel-slice-label",
+      style: {
+        WebkitTransform: "rotate(" + ang + "deg) translateY(-78px)",
+        transform: "rotate(" + ang + "deg) translateY(-78px)"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "brush-wheel-slice-badge"
+    }, k.badge), /*#__PURE__*/React.createElement("span", {
+      className: "brush-wheel-slice-name"
+    }, k.name));
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "brush-wheel-hub",
+    "aria-hidden": "true"
+  }, "🪥"))), wheelWinner ? /*#__PURE__*/React.createElement("div", {
+    className: "celebrate brush-wheel-result"
+  }, /*#__PURE__*/React.createElement(Slot, {
+    src: IMAGES[KIDS[wheelWinner].img],
+    label: KIDS[wheelWinner].name,
+    className: "brush-wheel-winner-face"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "comic pop",
+    style: {
+      color: KIDS[wheelWinner].colour
+    }
+  }, KIDS[wheelWinner].name, " goes first!"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 900,
+      marginTop: "4px"
+    }
+  }, "Fair and square ", KIDS[wheelWinner].badge), /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    type: "button",
+    onClick: function onClick() {
+      setModal(null);
+      openTimer(EVERYDAY_JOBS[0]);
+    }
+  }, "🪥 Start brushing"), /*#__PURE__*/React.createElement("button", {
+    className: "btn hist",
+    type: "button",
+    onClick: function onClick() {
+      setWheelWinner(null);
+      wheelWinnerIdxRef.current = null;
+    }
+  }, "Spin again"), /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    type: "button",
+    onClick: closeBrushWheel
+  }, "Done")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "brush-tip"
+  }, wheelSpinning ? "Round and round — who will it be?!" : "Tap spin for a fair pick. Equal chance for everyone!"), /*#__PURE__*/React.createElement("button", {
+    className: "btn go",
+    type: "button",
+    disabled: wheelSpinning,
+    onClick: spinBrushWheel
+  }, wheelSpinning ? "Spinning…" : "🎡 SPIN!"), /*#__PURE__*/React.createElement("button", {
+    className: "btn close",
+    type: "button",
+    disabled: wheelSpinning,
+    onClick: closeBrushWheel
+  }, "Close"))))), modal === "coinDrop" && pendingReward && /*#__PURE__*/React.createElement(CoinDropGame, {
     kid: Object.assign({}, KIDS[pendingReward.kidId] || K, {
       id: pendingReward.kidId || kid
     }),

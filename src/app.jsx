@@ -111,6 +111,9 @@ const KIDS = {
   ben:   {name:"Ben",   cls:"h-ben",   colour:"#ff3b3b", img:"heroBen",   badge:"✊"}
 };
 
+/* Equal thirds on the brush-first spinner (clockwise from top) */
+const BRUSH_WHEEL_ORDER = ["sam", "isaac", "ben"];
+
 const EVERYDAY_JOBS = [
   {id:"brush-am", name:"Brush teeth", sub:"Morning",       coins:1, timer:true},
   {id:"brush-pm", name:"Brush teeth", sub:"Night",         coins:1, timer:true},
@@ -2692,7 +2695,7 @@ function App(){
   const [boosts,setBoosts] = useState(initial.boosts);
   const [settings,setSettings] = useState(initial.settings || defaultSettings());
   const [pendingReward,setPendingReward] = useState(initial.pendingReward || null);
-  const [modal,setModal] = useState(null); // vault | timer | heroTimer | history | settings | profile | unlock | coinDrop
+  const [modal,setModal] = useState(null); // vault | timer | heroTimer | brushWheel | history | settings | profile | unlock | coinDrop
   const [unlockQueue,setUnlockQueue] = useState([]);
   const unlockQueueRef = useRef([]);
   const [timerJob,setTimerJob] = useState(null);
@@ -2704,6 +2707,9 @@ function App(){
   const [heroRunning,setHeroRunning] = useState(false);
   const [heroDone,setHeroDone] = useState(false);
   const [heroLabel,setHeroLabel] = useState("Hero Timer");
+  const [wheelRot,setWheelRot] = useState(0);
+  const [wheelSpinning,setWheelSpinning] = useState(false);
+  const [wheelWinner,setWheelWinner] = useState(null);
   const [toast,setToast] = useState(null);
   const [cloud,setCloud] = useState(supabaseReady() ? "syncing" : "local");
   const [focusedRow,setFocusedRow] = useState(null);
@@ -2720,6 +2726,8 @@ function App(){
   const awardedRewardIdsRef = useRef({});
   const timerCompletedRef = useRef(false);
   const heroTimerCompletedRef = useRef(false);
+  const wheelRotRef = useRef(0);
+  const wheelWinnerIdxRef = useRef(null);
   const deferUnlockModalRef = useRef(false);
   const recoveryDoneRef = useRef(false);
   const tune = useBrushingTune();
@@ -3806,6 +3814,56 @@ function App(){
     setHeroTimerDuration(base + delta);
   };
 
+  const openBrushWheel = function(){
+    setWheelWinner(null);
+    wheelWinnerIdxRef.current = null;
+    setWheelSpinning(false);
+    setModal("brushWheel");
+  };
+
+  const closeBrushWheel = function(){
+    setWheelSpinning(false);
+    setModal(null);
+  };
+
+  const spinBrushWheel = function(){
+    if(wheelSpinning) return;
+    const n = BRUSH_WHEEL_ORDER.length;
+    const slice = 360 / n;
+    const winnerIdx = Math.floor(Math.random() * n);
+    const jitter = (Math.random() - 0.5) * (slice * 0.55);
+    const center = winnerIdx * slice + slice / 2 + jitter;
+    const spins = 5 + Math.floor(Math.random() * 3);
+    const current = wheelRotRef.current;
+    const currentMod = ((current % 360) + 360) % 360;
+    const desiredMod = ((360 - center) % 360 + 360) % 360;
+    var delta = desiredMod - currentMod;
+    if(delta < 0) delta += 360;
+    const nextRot = current + spins * 360 + delta;
+    wheelWinnerIdxRef.current = winnerIdx;
+    setWheelWinner(null);
+    setWheelSpinning(true);
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        wheelRotRef.current = nextRot;
+        setWheelRot(nextRot);
+      });
+    });
+  };
+
+  const onBrushWheelTransitionEnd = function(e){
+    if(!e || e.propertyName !== "transform") return;
+    if(!wheelSpinning) return;
+    const idx = wheelWinnerIdxRef.current;
+    if(idx == null) return;
+    const winnerKey = BRUSH_WHEEL_ORDER[idx];
+    setWheelSpinning(false);
+    setWheelWinner(winnerKey);
+    setKid(winnerKey);
+    setFocusedRow(null);
+    try{ tune.fanfare(); }catch(err){}
+  };
+
   useEffect(function(){
     if(!running) return;
     if(secs<=0){
@@ -4356,6 +4414,27 @@ function App(){
         </div>
       </section>
 
+      {/* ---------------- BRUSH-FIRST WHEEL ---------------- */}
+      <section className="panel brush-wheel-panel">
+        <div className="panel-head">
+          <div className="comic ptitle outline-2">Who Brushes First?</div>
+          <div style={{fontSize:"1.7rem"}}>🪥</div>
+        </div>
+        <div className="panel-body">
+          <div className="band purple comic">★ Spin the wheel — fair and square ★</div>
+          <p className="brush-wheel-blurb">
+            No more arguments! Spin to see who grabs the toothbrush first.
+          </p>
+          <div className="brush-wheel-mini" aria-hidden="true">
+            <div className="brush-wheel-mini-pointer">▼</div>
+            <div className="brush-wheel-disc mini" />
+          </div>
+          <button type="button" className="btn go brush-wheel-open" onClick={openBrushWheel}>
+            🎡 Spin the wheel
+          </button>
+        </div>
+      </section>
+
       {/* ---------------- BOTTOM ---------------- */}
       <div className="bottom">
         <div>
@@ -4486,6 +4565,107 @@ function App(){
                     ? <button className="btn go" onClick={function(){ setHeroRunning(true); tune.start(); }}>▶ Start</button>
                     : <button className="btn stop" onClick={function(){ tune.pause(); setHeroRunning(false); }}>⏸ Pause</button>}
                   <button className="btn close" onClick={closeHeroTimer}>Cancel</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- BRUSH-FIRST WHEEL MODAL ---------------- */}
+      {modal==="brushWheel" && (
+        <div className="modal">
+          <div className="sheet brush-wheel-sheet" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-head brush-wheel-head">
+              <h2 className="comic outline-2">🎡 Who Brushes First?</h2>
+            </div>
+            <div className="sheet-body">
+              <div className="brush-wheel-stage">
+                <div className="brush-wheel-pointer" aria-hidden="true">▼</div>
+                <div className="brush-wheel-disc-wrap">
+                  <div
+                    className={"brush-wheel-disc"+(wheelSpinning?" is-spinning":"")}
+                    style={{
+                      WebkitTransform: "rotate("+wheelRot+"deg)",
+                      transform: "rotate("+wheelRot+"deg)"
+                    }}
+                    onTransitionEnd={onBrushWheelTransitionEnd}
+                  >
+                    {BRUSH_WHEEL_ORDER.map(function(key, i){
+                      const k = KIDS[key];
+                      const ang = i * 120 + 60;
+                      return (
+                        <div
+                          key={key}
+                          className="brush-wheel-slice-label"
+                          style={{
+                            WebkitTransform: "rotate("+ang+"deg) translateY(-78px)",
+                            transform: "rotate("+ang+"deg) translateY(-78px)"
+                          }}
+                        >
+                          <span className="brush-wheel-slice-badge">{k.badge}</span>
+                          <span className="brush-wheel-slice-name">{k.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="brush-wheel-hub" aria-hidden="true">🪥</div>
+                </div>
+              </div>
+
+              {wheelWinner ? (
+                <div className="celebrate brush-wheel-result">
+                  <Slot
+                    src={IMAGES[KIDS[wheelWinner].img]}
+                    label={KIDS[wheelWinner].name}
+                    className="brush-wheel-winner-face"
+                  />
+                  <div className="comic pop" style={{color:KIDS[wheelWinner].colour}}>
+                    {KIDS[wheelWinner].name} goes first!
+                  </div>
+                  <div style={{fontWeight:900,marginTop:"4px"}}>
+                    Fair and square {KIDS[wheelWinner].badge}
+                  </div>
+                  <button
+                    className="btn go"
+                    type="button"
+                    onClick={function(){
+                      setModal(null);
+                      openTimer(EVERYDAY_JOBS[0]);
+                    }}
+                  >
+                    🪥 Start brushing
+                  </button>
+                  <button
+                    className="btn hist"
+                    type="button"
+                    onClick={function(){
+                      setWheelWinner(null);
+                      wheelWinnerIdxRef.current = null;
+                    }}
+                  >
+                    Spin again
+                  </button>
+                  <button className="btn close" type="button" onClick={closeBrushWheel}>Done</button>
+                </div>
+              ) : (
+                <>
+                  <div className="brush-tip">
+                    {wheelSpinning
+                      ? "Round and round — who will it be?!"
+                      : "Tap spin for a fair pick. Equal chance for everyone!"}
+                  </div>
+                  <button
+                    className="btn go"
+                    type="button"
+                    disabled={wheelSpinning}
+                    onClick={spinBrushWheel}
+                  >
+                    {wheelSpinning ? "Spinning…" : "🎡 SPIN!"}
+                  </button>
+                  <button className="btn close" type="button" disabled={wheelSpinning} onClick={closeBrushWheel}>
+                    Close
+                  </button>
                 </>
               )}
             </div>
