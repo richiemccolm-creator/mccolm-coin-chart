@@ -221,7 +221,10 @@ const POWERUPS = [
     check:function(s){ return s.count.kind >= 10; }},
   {id:"extra-drop",  name:"Bonus Drop",        icon:"🎯", effect:"playCoinDrop",
     blurb:"Play the coin drop game once — no brushing needed!",
-    check:function(s){ return s.brushTotal >= 5; }}
+    check:function(s){ return s.brushTotal >= 5; }},
+  {id:"coin-blaster", name:"Coin Blaster",     icon:"🚀", effect:"playCoinBlaster",
+    blurb:"Blast falling coins with laser beams!",
+    check:function(s){ return s.brushTotal >= 12; }}
 ];
 
 const ALL_REWARDS = TROPHIES.map(function(t){
@@ -343,31 +346,48 @@ function useBrushingTune(){
   return {start,pause,stop,fanfare};
 }
 
-/* Keep the screen on while the brushing timer is running (Screen Wake Lock API) */
-function useBrushScreenWakeLock(active){
+/* Keep the screen on while any countdown timer is running (Screen Wake Lock API) */
+function useScreenWakeLock(active){
   const lockRef = useRef(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   useEffect(function(){
     let cancelled = false;
+    let retryTimer = null;
+
+    function clearRetry(){
+      if(retryTimer){
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+    }
 
     async function requestLock(){
-      if(!active || cancelled) return;
+      if(cancelled || !activeRef.current) return;
       if(typeof navigator === "undefined" || !navigator.wakeLock || typeof navigator.wakeLock.request !== "function") return;
       if(typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if(lockRef.current) return;
       try{
         const lock = await navigator.wakeLock.request("screen");
-        if(cancelled || !active){
+        if(cancelled || !activeRef.current){
           try{ await lock.release(); }catch(e){}
           return;
         }
         lockRef.current = lock;
         lock.addEventListener("release", function(){
           if(lockRef.current === lock) lockRef.current = null;
+          /* OS can drop the lock on longer timers — reclaim while still counting down */
+          if(!cancelled && activeRef.current && document.visibilityState === "visible"){
+            clearRetry();
+            retryTimer = setTimeout(function(){ requestLock(); }, 400);
+          }
         });
       }catch(e){}
     }
 
     async function releaseLock(){
+      clearRetry();
       const lock = lockRef.current;
       lockRef.current = null;
       if(!lock) return;
@@ -381,7 +401,7 @@ function useBrushScreenWakeLock(active){
     }
 
     function onVisibility(){
-      if(document.visibilityState === "visible" && active) requestLock();
+      if(document.visibilityState === "visible" && activeRef.current) requestLock();
     }
     document.addEventListener("visibilitychange", onVisibility);
 
@@ -455,14 +475,14 @@ function nextBrushGame(last){
 }
 
 function isPracticeBrushSource(source){
-  return source === "test-drop" || source === "test-chase" || source === "test-dash";
+  return source === "test-drop" || source === "test-chase" || source === "test-dash" || source === "test-blaster";
 }
 
 function normalizePendingReward(raw){
   if(!raw || typeof raw !== "object" || !raw.rewardId || !raw.kidId) return null;
   if(!KIDS[raw.kidId]) return null;
   var game = "coinDrop";
-  if(raw.game === "coinChase" || raw.game === "mazeDash" || raw.game === "coinDrop"){
+  if(raw.game === "coinChase" || raw.game === "mazeDash" || raw.game === "coinDrop" || raw.game === "coinBlaster"){
     game = raw.game;
   }
   return {
@@ -479,11 +499,12 @@ function normalizePendingReward(raw){
 
 function brushGameFromPending(pending){
   if(!pending) return "coinDrop";
-  if(pending.game === "coinChase" || pending.game === "mazeDash" || pending.game === "coinDrop"){
+  if(pending.game === "coinChase" || pending.game === "mazeDash" || pending.game === "coinDrop" || pending.game === "coinBlaster"){
     return pending.game;
   }
   if(pending.source === "test-chase") return "coinChase";
   if(pending.source === "test-dash") return "mazeDash";
+  if(pending.source === "test-blaster" || pending.source === "powerup-coin-blaster") return "coinBlaster";
   return "coinDrop";
 }
 
@@ -2685,6 +2706,408 @@ function MazeDashGame(props){
   );
 }
 
+/* ================= COIN BLASTER (prototype) ================= */
+const CB_W = 360;
+const CB_H = 520;
+const CB_TARGET_HITS = 8;
+const CB_DURATION_MS = 30000;
+const CB_FIRE_MS = 250;
+const CB_SHIP_W = 44;
+const CB_SHIP_H = 28;
+const CB_COIN_R = 14;
+const CB_LASER_H = 18;
+const CB_LASER_W = 4;
+const CB_LASER_SPEED = 11;
+const CB_SHIP_SPEED = 5.2;
+
+function CoinBlasterGame(props){
+  const kid = props.kid;
+  const reward = props.reward;
+  const onComplete = props.onComplete;
+  const onClose = props.onClose;
+  const awardReward = props.awardReward;
+
+  const canvasRef = useRef(null);
+  const animationFrameRef = useRef(0);
+  const finishedRef = useRef(false);
+  const awardResultRef = useRef(null);
+  const stageRef = useRef("ready");
+  const shipRef = useRef({x: CB_W / 2, y: CB_H - 48});
+  const lasersRef = useRef([]);
+  const coinsRef = useRef([]);
+  const hitsRef = useRef(0);
+  const startMsRef = useRef(0);
+  const lastSpawnMsRef = useRef(0);
+  const lastFireMsRef = useRef(0);
+  const buttonSteerRef = useRef(0);
+  const keySteerRef = useRef(0);
+  const fireHeldRef = useRef(false);
+  const secsLeftRef = useRef(30);
+
+  const [gameStage, setGameStage] = useState("ready");
+  const [hudHits, setHudHits] = useState(0);
+  const [hudSecs, setHudSecs] = useState(30);
+  const [resultWon, setResultWon] = useState(false);
+  const [resultAmount, setResultAmount] = useState(null);
+  const closeHandlerRef = useRef(function(){});
+
+  const setStage = function(next){
+    stageRef.current = next;
+    setGameStage(next);
+  };
+
+  const drawFrame = function(ctx){
+    ctx.fillStyle = "#0a1f3d";
+    ctx.fillRect(0, 0, CB_W, CB_H);
+
+    const ship = shipRef.current;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(ship.x - CB_SHIP_W / 2, ship.y - CB_SHIP_H / 2, CB_SHIP_W, CB_SHIP_H);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(ship.x - CB_SHIP_W / 2, ship.y - CB_SHIP_H / 2, CB_SHIP_W, CB_SHIP_H);
+
+    ctx.strokeStyle = "#00e5ff";
+    ctx.lineWidth = CB_LASER_W;
+    ctx.lineCap = "butt";
+    lasersRef.current.forEach(function(laser){
+      ctx.beginPath();
+      ctx.moveTo(laser.x, laser.y);
+      ctx.lineTo(laser.x, laser.y - CB_LASER_H);
+      ctx.stroke();
+    });
+
+    ctx.fillStyle = "#ffc42e";
+    coinsRef.current.forEach(function(coin){
+      ctx.beginPath();
+      ctx.arc(coin.x, coin.y, CB_COIN_R, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 20px Nunito,sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("Hits: " + hitsRef.current + "/" + CB_TARGET_HITS, 12, 28);
+    ctx.textAlign = "right";
+    const secs = Math.max(0, secsLeftRef.current);
+    const label = "0:" + (secs < 10 ? "0" : "") + secs;
+    ctx.fillText(label, CB_W - 12, 28);
+  };
+
+  const endRound = function(won){
+    if(finishedRef.current) return;
+    finishedRef.current = true;
+    if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = 0;
+    setResultWon(!!won);
+    if(won){
+      setStage("won");
+      Promise.resolve(awardReward(reward)).then(function(result){
+        awardResultRef.current = result || null;
+        const amt = result && result.amountAwarded != null ? result.amountAwarded : (reward.amount || 1);
+        setResultAmount(amt);
+        setStage("complete");
+      }).catch(function(){
+        setResultAmount(reward.amount || 1);
+        setStage("complete");
+      });
+    }else{
+      setResultAmount(null);
+      setStage("complete");
+    }
+  };
+
+  const tryFire = function(now){
+    if(now - lastFireMsRef.current < CB_FIRE_MS) return;
+    lastFireMsRef.current = now;
+    const ship = shipRef.current;
+    lasersRef.current.push({
+      x: ship.x,
+      y: ship.y - CB_SHIP_H / 2 - 2
+    });
+  };
+
+  const spawnRatePerSec = function(elapsedMs){
+    const t = Math.min(1, elapsedMs / 20000);
+    return 1 + t * 1.75;
+  };
+
+  const coinFallSpeed = function(elapsedMs){
+    return 1.6 + Math.min(2.2, (elapsedMs / 30000) * 2.2);
+  };
+
+  useEffect(function(){
+    if(gameStage !== "playing") return;
+
+    const tick = function(now){
+      if(stageRef.current !== "playing" || finishedRef.current) return;
+      const elapsed = now - startMsRef.current;
+      const leftMs = CB_DURATION_MS - elapsed;
+      const secs = Math.ceil(Math.max(0, leftMs) / 1000);
+      if(secs !== secsLeftRef.current){
+        secsLeftRef.current = secs;
+        setHudSecs(secs);
+      }
+
+      if(leftMs <= 0){
+        endRound(false);
+        const canvas = canvasRef.current;
+        if(canvas) drawFrame(canvas.getContext("2d"));
+        return;
+      }
+
+      const steer = clamp(buttonSteerRef.current + keySteerRef.current, -1, 1);
+      const ship = shipRef.current;
+      ship.x = clamp(ship.x + steer * CB_SHIP_SPEED, CB_SHIP_W / 2 + 4, CB_W - CB_SHIP_W / 2 - 4);
+
+      if(fireHeldRef.current) tryFire(now);
+
+      const rate = spawnRatePerSec(elapsed);
+      const spawnEvery = 1000 / rate;
+      if(now - lastSpawnMsRef.current >= spawnEvery){
+        lastSpawnMsRef.current = now;
+        coinsRef.current.push({
+          x: CB_COIN_R + 8 + Math.random() * (CB_W - CB_COIN_R * 2 - 16),
+          y: -CB_COIN_R,
+          r: CB_COIN_R
+        });
+      }
+
+      const fall = coinFallSpeed(elapsed);
+      coinsRef.current = coinsRef.current.filter(function(coin){
+        coin.y += fall;
+        return coin.y - coin.r < CB_H + 4;
+      });
+
+      lasersRef.current = lasersRef.current.filter(function(laser){
+        laser.y -= CB_LASER_SPEED;
+        return laser.y + CB_LASER_H > 0;
+      });
+
+      const lasers = lasersRef.current;
+      const coins = coinsRef.current;
+      for(var li = lasers.length - 1; li >= 0; li--){
+        const laser = lasers[li];
+        const lx = laser.x;
+        const ly1 = laser.y - CB_LASER_H;
+        const ly2 = laser.y;
+        for(var ci = coins.length - 1; ci >= 0; ci--){
+          const coin = coins[ci];
+          const dx = lx - coin.x;
+          if(Math.abs(dx) > coin.r + CB_LASER_W) continue;
+          if(ly2 < coin.y - coin.r || ly1 > coin.y + coin.r) continue;
+          coins.splice(ci, 1);
+          lasers.splice(li, 1);
+          hitsRef.current += 1;
+          setHudHits(hitsRef.current);
+          if(hitsRef.current >= CB_TARGET_HITS){
+            endRound(true);
+            const canvasWin = canvasRef.current;
+            if(canvasWin) drawFrame(canvasWin.getContext("2d"));
+            return;
+          }
+          break;
+        }
+      }
+
+      const canvas = canvasRef.current;
+      if(canvas) drawFrame(canvas.getContext("2d"));
+      animationFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(tick);
+    return function(){
+      if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [gameStage]);
+
+  useEffect(function(){
+    const canvas = canvasRef.current;
+    if(canvas) drawFrame(canvas.getContext("2d"));
+
+    const onKeyDown = function(e){
+      if(e.key === "Escape"){
+        e.preventDefault();
+        closeHandlerRef.current();
+        return;
+      }
+      if(stageRef.current !== "playing") return;
+      if(e.key === "ArrowLeft" || e.key === "a" || e.key === "A"){
+        e.preventDefault();
+        keySteerRef.current = -1;
+      }else if(e.key === "ArrowRight" || e.key === "d" || e.key === "D"){
+        e.preventDefault();
+        keySteerRef.current = 1;
+      }else if(e.key === " " || e.code === "Space"){
+        e.preventDefault();
+        fireHeldRef.current = true;
+      }
+    };
+    const onKeyUp = function(e){
+      if(e.key === "ArrowLeft" || e.key === "a" || e.key === "A"){
+        if(keySteerRef.current < 0) keySteerRef.current = 0;
+      }else if(e.key === "ArrowRight" || e.key === "d" || e.key === "D"){
+        if(keySteerRef.current > 0) keySteerRef.current = 0;
+      }else if(e.key === " " || e.code === "Space"){
+        fireHeldRef.current = false;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return function(){
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, []);
+
+  const startGame = function(){
+    if(stageRef.current !== "ready") return;
+    finishedRef.current = false;
+    hitsRef.current = 0;
+    lasersRef.current = [];
+    coinsRef.current = [];
+    shipRef.current = {x: CB_W / 2, y: CB_H - 48};
+    secsLeftRef.current = 30;
+    setHudHits(0);
+    setHudSecs(30);
+    setResultAmount(null);
+    setResultWon(false);
+    const now = performance.now();
+    startMsRef.current = now;
+    lastSpawnMsRef.current = now;
+    lastFireMsRef.current = 0;
+    setStage("playing");
+  };
+
+  const handleClose = function(){
+    if(stageRef.current === "complete" || stageRef.current === "won"){
+      onClose();
+      return;
+    }
+    finishedRef.current = true;
+    stageRef.current = "lost";
+    if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = 0;
+    /* Lose / quit — do not award */
+    onClose();
+  };
+  closeHandlerRef.current = handleClose;
+
+  const dismissResult = function(){
+    onComplete();
+  };
+
+  const isPractice = !!(reward && reward.source === "test-blaster");
+  const showResult = gameStage === "complete" || gameStage === "won";
+
+  let headTitle = "Coin Blaster!";
+  if(reward && reward.source === "powerup-coin-blaster") headTitle = "Coin Blaster!";
+  else if(isPractice) headTitle = "Test Blaster!";
+  if(showResult){
+    headTitle = resultWon ? "You won!" : "Almost!";
+  }
+
+  const instruct = gameStage === "ready"
+    ? "Hit " + CB_TARGET_HITS + " coins before time runs out"
+    : showResult
+      ? (resultWon ? "Tap Done when you're ready" : "No coins this time — tap Done")
+      : "◀ ▶ to move · FIRE or Space to shoot";
+
+  return (
+    <div className="modal coin-drop-modal">
+      <div className={"coin-drop-sheet kid-"+(kid && kid.id)} onClick={function(e){ e.stopPropagation(); }}>
+        <div className="coin-drop-head">
+          <h2 className="comic">{headTitle}</h2>
+          <p className="coin-drop-instructions">{instruct}</p>
+        </div>
+
+        <div className="coin-drop-board">
+          <canvas
+            ref={canvasRef}
+            className="coin-drop-canvas"
+            width={CB_W}
+            height={CB_H}
+            role="img"
+            aria-label={"Coin Blaster. Hits "+hudHits+" of "+CB_TARGET_HITS+". "+hudSecs+" seconds left."}
+          />
+          {gameStage === "ready" && (
+            <div className="coin-drop-rules" aria-live="polite">
+              <p className="coin-drop-rules-title">How to play</p>
+              <ol className="coin-drop-rules-list">
+                <li>Move with <strong>◀ ▶</strong> or arrow keys</li>
+                <li>Hold <strong>FIRE</strong> or Space to shoot lasers</li>
+                <li>Hit <strong>{CB_TARGET_HITS} coins</strong> in 30 seconds to win</li>
+              </ol>
+            </div>
+          )}
+          {showResult ? (
+            <div className={"coin-drop-result" + (resultWon ? " is-vault" : " is-side")}>
+              <div className="comic burst-label">{resultWon ? "You won!" : "Almost!"}</div>
+              {resultWon && isPractice
+                ? <div className="coin-drop-amt coin-drop-practice">Practice — no coins added</div>
+                : resultWon && resultAmount != null && (
+                  <div className="coin-drop-amt">+{resultAmount} coin{resultAmount === 1 ? "" : "s"}</div>
+                )}
+              {!resultWon && <div className="coin-drop-sub">Need {CB_TARGET_HITS} hits — try again next time</div>}
+            </div>
+          ) : null}
+        </div>
+
+        {gameStage === "ready" && (
+          <button className="btn go coin-drop-start" type="button" onClick={startGame}>
+            Start Blaster
+          </button>
+        )}
+
+        {gameStage === "complete" ? (
+          <button className="btn go coin-drop-done" type="button" onClick={dismissResult}>
+            {resultWon ? "Awesome — Done!" : "Done"}
+          </button>
+        ) : gameStage === "won" ? (
+          <button className="btn go coin-drop-done" type="button" disabled>
+            Banking…
+          </button>
+        ) : (
+          <div className="coin-drop-controls">
+            <button
+              type="button"
+              className="coin-drop-arrow"
+              aria-label="Move left"
+              onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = -1; }}
+              onPointerUp={function(){ buttonSteerRef.current = 0; }}
+              onPointerLeave={function(){ buttonSteerRef.current = 0; }}
+              onPointerCancel={function(){ buttonSteerRef.current = 0; }}
+            >◀ LEFT</button>
+            <button
+              type="button"
+              className="coin-drop-jump coin-blaster-fire"
+              aria-label="Fire lasers"
+              onPointerDown={function(e){ e.preventDefault(); fireHeldRef.current = true; }}
+              onPointerUp={function(){ fireHeldRef.current = false; }}
+              onPointerLeave={function(){ fireHeldRef.current = false; }}
+              onPointerCancel={function(){ fireHeldRef.current = false; }}
+            >⚡ FIRE</button>
+            <button
+              type="button"
+              className="coin-drop-arrow"
+              aria-label="Move right"
+              onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = 1; }}
+              onPointerUp={function(){ buttonSteerRef.current = 0; }}
+              onPointerLeave={function(){ buttonSteerRef.current = 0; }}
+              onPointerCancel={function(){ buttonSteerRef.current = 0; }}
+            >RIGHT ▶</button>
+          </div>
+        )}
+
+        {gameStage !== "complete" && gameStage !== "won" && (
+          <button className="btn close" type="button" onClick={handleClose}>Close</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ================= APP ================= */
 function App(){
   const initial = useMemo(function(){ return loadState(); },[]);
@@ -2695,7 +3118,7 @@ function App(){
   const [boosts,setBoosts] = useState(initial.boosts);
   const [settings,setSettings] = useState(initial.settings || defaultSettings());
   const [pendingReward,setPendingReward] = useState(initial.pendingReward || null);
-  const [modal,setModal] = useState(null); // vault | timer | heroTimer | brushWheel | history | settings | profile | unlock | coinDrop
+  const [modal,setModal] = useState(null); // vault | timer | heroTimer | brushWheel | history | settings | profile | unlock | coinDrop | coinChase | mazeDash | coinBlaster
   const [unlockQueue,setUnlockQueue] = useState([]);
   const unlockQueueRef = useRef([]);
   const [timerJob,setTimerJob] = useState(null);
@@ -2731,7 +3154,7 @@ function App(){
   const deferUnlockModalRef = useRef(false);
   const recoveryDoneRef = useRef(false);
   const tune = useBrushingTune();
-  useBrushScreenWakeLock(running || heroRunning);
+  useScreenWakeLock(running || heroRunning);
 
   useEffect(function(){
     coinsRef.current = coins;
@@ -3514,6 +3937,25 @@ function App(){
       flash("Bonus Drop — guide that coin!");
       return;
     }
+    if(meta.effect === "playCoinBlaster"){
+      markPowerupUsed(slug, unlockId);
+      const reward = {
+        rewardId: makeRewardId(),
+        kidId: slug,
+        amount: 1,
+        description: "Coin Blaster",
+        source: "powerup-coin-blaster",
+        createdAt: new Date().toISOString(),
+        awarded: false,
+        game: "coinBlaster"
+      };
+      pendingRewardRef.current = reward;
+      setPendingReward(reward);
+      deferUnlockModalRef.current = true;
+      setModal("coinBlaster");
+      flash("Coin Blaster — hit 8 coins!");
+      return;
+    }
   };
 
   const undoLast = function(){
@@ -3601,7 +4043,7 @@ function App(){
       }
       const slug = reward.kidId;
       if(reward.rewardId && awardedRewardIdsRef.current[reward.rewardId]){
-        if(modal === "coinDrop" || modal === "coinChase" || modal === "mazeDash"){
+        if(modal === "coinDrop" || modal === "coinChase" || modal === "mazeDash" || modal === "coinBlaster"){
           finishCoinDropFlow();
         }else{
           clearPendingReward();
@@ -3612,7 +4054,7 @@ function App(){
         return tx && reward.rewardId && tx.rewardId === reward.rewardId;
       });
       if(alreadyExists){
-        if(modal === "coinDrop" || modal === "coinChase" || modal === "mazeDash"){
+        if(modal === "coinDrop" || modal === "coinChase" || modal === "mazeDash" || modal === "coinBlaster"){
           finishCoinDropFlow();
         }else{
           clearPendingReward();
@@ -3629,7 +4071,7 @@ function App(){
           kidId: slug,
           rewardId: reward.rewardId,
           deferCelebration: true,
-          quiet: modal === "coinDrop" || modal === "coinChase" || modal === "mazeDash"
+          quiet: modal === "coinDrop" || modal === "coinChase" || modal === "mazeDash" || modal === "coinBlaster"
         }
       );
       markPendingAwarded(reward);
@@ -3724,6 +4166,29 @@ function App(){
     deferUnlockModalRef.current = true;
     setModal("mazeDash");
     flash("Test dash — practice only");
+  };
+
+  const launchTestCoinBlaster = function(){
+    const pending = pendingRewardRef.current || pendingReward;
+    if(pending && !pending.awarded && !isPracticeBrushSource(pending.source)){
+      flash("Finish the open coin game first");
+      return;
+    }
+    const reward = {
+      rewardId: makeRewardId(),
+      kidId: kid,
+      amount: 1,
+      description: "Test Coin Blaster",
+      source: "test-blaster",
+      createdAt: new Date().toISOString(),
+      awarded: false,
+      game: "coinBlaster"
+    };
+    pendingRewardRef.current = reward;
+    setPendingReward(reward);
+    deferUnlockModalRef.current = true;
+    setModal("coinBlaster");
+    flash("Test blaster — practice only");
   };
 
   const finishCoinDropFlow = function(){
@@ -4707,6 +5172,17 @@ function App(){
         />
       )}
 
+      {/* ---------------- COIN BLASTER MINI-GAME ---------------- */}
+      {modal==="coinBlaster" && pendingReward && (
+        <CoinBlasterGame
+          kid={Object.assign({}, KIDS[pendingReward.kidId] || K, {id: pendingReward.kidId || kid})}
+          reward={pendingReward}
+          awardReward={completePendingReward}
+          onComplete={handleCoinDropComplete}
+          onClose={handleCoinDropComplete}
+        />
+      )}
+
       {/* ---------------- HISTORY MODAL ---------------- */}
       {modal==="history" && (
         <div className="modal" onClick={()=>setModal(null)}>
@@ -4904,6 +5380,12 @@ function App(){
               </button>
               <div className="settings-note" style={{marginTop:"-4px"}}>
                 Practice only — opens Maze Dash now, does not add coins.
+              </div>
+              <button className="btn go" type="button" onClick={launchTestCoinBlaster}>
+                ▶ Play test blaster ({K.name})
+              </button>
+              <div className="settings-note" style={{marginTop:"-4px"}}>
+                Practice only — opens Coin Blaster now, does not add coins.
               </div>
 
               <button className="btn undo" onClick={undoLast} disabled={!log[kid].length}>↩ Undo last for {K.name}</button>
