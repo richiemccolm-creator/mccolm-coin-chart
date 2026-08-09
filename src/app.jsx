@@ -574,6 +574,89 @@ function playCoinSfx(kind, enabled){
   }catch(e){}
 }
 
+/* Shared Web Audio context for rapid blaster SFX (Android-friendly) */
+var _blasterAudioCtx = null;
+function blasterAudioCtx(){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return null;
+    if(!_blasterAudioCtx || _blasterAudioCtx.state === "closed"){
+      _blasterAudioCtx = new AC();
+    }
+    if(_blasterAudioCtx.state === "suspended"){
+      try{ _blasterAudioCtx.resume(); }catch(e){}
+    }
+    return _blasterAudioCtx;
+  }catch(e){ return null; }
+}
+
+function playBlasterSfx(kind){
+  try{
+    const ctx = blasterAudioCtx();
+    if(!ctx) return;
+    const now = ctx.currentTime;
+    if(kind === "laser"){
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(1400 + Math.random() * 200, now);
+      o.frequency.exponentialRampToValueAtTime(380, now + 0.09);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.055, now + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+      o.connect(g); g.connect(ctx.destination); o.start(now); o.stop(now + 0.11);
+    }else if(kind === "hit"){
+      const o1 = ctx.createOscillator(); const o2 = ctx.createOscillator(); const g = ctx.createGain();
+      o1.type = "square"; o2.type = "triangle";
+      o1.frequency.setValueAtTime(880, now);
+      o1.frequency.exponentialRampToValueAtTime(220, now + 0.14);
+      o2.frequency.setValueAtTime(1320, now);
+      o2.frequency.exponentialRampToValueAtTime(330, now + 0.14);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+      o1.connect(g); o2.connect(g); g.connect(ctx.destination);
+      o1.start(now); o2.start(now); o1.stop(now + 0.2); o2.stop(now + 0.2);
+    }else if(kind === "start"){
+      [523, 659, 784, 1046].forEach(function(f, i){
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.type = "square"; o.frequency.value = f;
+        const t = now + i * 0.07;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.1, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+        o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.24);
+      });
+    }else if(kind === "win"){
+      [523, 659, 784, 1046, 1318].forEach(function(f, i){
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.type = "sine"; o.frequency.value = f;
+        const t = now + i * 0.09;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.15, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.38);
+      });
+    }else if(kind === "lose"){
+      [392, 349, 294].forEach(function(f, i){
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.type = "triangle"; o.frequency.value = f;
+        const t = now + i * 0.12;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.1, t + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+        o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.3);
+      });
+    }else if(kind === "tick"){
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = "square"; o.frequency.value = 980;
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.04, now + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+      o.connect(g); g.connect(ctx.destination); o.start(now); o.stop(now + 0.07);
+    }
+  }catch(e){}
+}
+
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -2706,19 +2789,35 @@ function MazeDashGame(props){
   );
 }
 
-/* ================= COIN BLASTER (prototype) ================= */
+/* ================= COIN BLASTER (hero ship) ================= */
 const CB_W = 360;
 const CB_H = 520;
 const CB_TARGET_HITS = 8;
 const CB_DURATION_MS = 30000;
-const CB_FIRE_MS = 250;
-const CB_SHIP_W = 44;
-const CB_SHIP_H = 28;
-const CB_COIN_R = 14;
-const CB_LASER_H = 18;
-const CB_LASER_W = 4;
-const CB_LASER_SPEED = 11;
-const CB_SHIP_SPEED = 5.2;
+const CB_FIRE_MS = 220;
+const CB_SHIP_W = 56;
+const CB_SHIP_H = 52;
+const CB_COIN_R = 15;
+const CB_LASER_H = 26;
+const CB_LASER_W = 5;
+const CB_LASER_SPEED = 12.5;
+const CB_SHIP_SPEED = 5.6;
+const CB_MAX_PARTICLES = 48;
+const CB_MAX_FLOATS = 6;
+
+function cbBuildStars(){
+  const stars = [];
+  for(var i = 0; i < 42; i++){
+    stars.push({
+      x: Math.random() * CB_W,
+      y: Math.random() * CB_H,
+      r: 0.6 + Math.random() * 1.8,
+      speed: 0.35 + Math.random() * 1.4,
+      a: 0.35 + Math.random() * 0.55
+    });
+  }
+  return stars;
+}
 
 function CoinBlasterGame(props){
   const kid = props.kid;
@@ -2726,15 +2825,20 @@ function CoinBlasterGame(props){
   const onComplete = props.onComplete;
   const onClose = props.onClose;
   const awardReward = props.awardReward;
+  const theme = cdThemeForKid(kid);
+  const heroSrc = (kid && kid.img && IMAGES[kid.img]) || "";
 
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(0);
   const finishedRef = useRef(false);
   const awardResultRef = useRef(null);
   const stageRef = useRef("ready");
-  const shipRef = useRef({x: CB_W / 2, y: CB_H - 48});
+  const shipRef = useRef({x: CB_W / 2, y: CB_H - 56, tilt: 0, thrust: 0});
   const lasersRef = useRef([]);
   const coinsRef = useRef([]);
+  const particlesRef = useRef([]);
+  const floatsRef = useRef([]);
+  const starsRef = useRef(cbBuildStars());
   const hitsRef = useRef(0);
   const startMsRef = useRef(0);
   const lastSpawnMsRef = useRef(0);
@@ -2743,55 +2847,334 @@ function CoinBlasterGame(props){
   const keySteerRef = useRef(0);
   const fireHeldRef = useRef(false);
   const secsLeftRef = useRef(30);
+  const shakeRef = useRef(0);
+  const flashRef = useRef(0);
+  const reducedRef = useRef(prefersReducedMotion());
+  const heroImgRef = useRef(null);
+  const heroReadyRef = useRef(false);
+  const themeRef = useRef(theme);
+  const celebrateRef = useRef(false);
 
   const [gameStage, setGameStage] = useState("ready");
   const [hudHits, setHudHits] = useState(0);
   const [hudSecs, setHudSecs] = useState(30);
   const [resultWon, setResultWon] = useState(false);
   const [resultAmount, setResultAmount] = useState(null);
+  const [boostFlash, setBoostFlash] = useState(false);
+  const [firingUi, setFiringUi] = useState(false);
   const closeHandlerRef = useRef(function(){});
+
+  const setFireHeld = function(on){
+    fireHeldRef.current = !!on;
+    setFiringUi(!!on);
+  };
+
+  themeRef.current = theme;
 
   const setStage = function(next){
     stageRef.current = next;
     setGameStage(next);
   };
 
-  const drawFrame = function(ctx){
-    ctx.fillStyle = "#0a1f3d";
-    ctx.fillRect(0, 0, CB_W, CB_H);
+  useEffect(function(){
+    heroReadyRef.current = false;
+    if(!heroSrc){ heroImgRef.current = null; return; }
+    const img = new Image();
+    img.onload = function(){ heroReadyRef.current = true; };
+    img.onerror = function(){ heroReadyRef.current = false; };
+    img.src = heroSrc;
+    heroImgRef.current = img;
+  }, [heroSrc]);
 
-    const ship = shipRef.current;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(ship.x - CB_SHIP_W / 2, ship.y - CB_SHIP_H / 2, CB_SHIP_W, CB_SHIP_H);
+  const spawnBurst = function(x, y, count, colorA, colorB){
+    if(reducedRef.current) return;
+    var n = Math.min(count, CB_MAX_PARTICLES - particlesRef.current.length);
+    for(var i = 0; i < n; i++){
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1.5 + Math.random() * 4.5;
+      particlesRef.current.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 1.2,
+        r: 1.5 + Math.random() * 3.2,
+        life: 1,
+        color: Math.random() > 0.45 ? colorA : colorB
+      });
+    }
+  };
+
+  const pushFloat = function(x, y, text, color){
+    if(floatsRef.current.length >= CB_MAX_FLOATS) floatsRef.current.shift();
+    floatsRef.current.push({x: x, y: y, text: text, color: color, life: 1});
+  };
+
+  const drawShip = function(ctx, ship, t){
+    const th = themeRef.current;
+    const accent = (kid && kid.colour) || th.accent || "#ffc42e";
+    const tilt = ship.tilt || 0;
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.rotate(tilt * 0.12);
+
+    /* thruster flame */
+    const thrust = 0.65 + (ship.thrust || 0) * 0.55 + Math.sin(t * 0.04) * 0.12;
+    const flameH = 14 + thrust * 16;
+    const fg = ctx.createLinearGradient(0, 22, 0, 22 + flameH);
+    fg.addColorStop(0, "#fff7a8");
+    fg.addColorStop(0.35, "#ff9a3c");
+    fg.addColorStop(1, "rgba(255,60,0,0)");
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.moveTo(-8, 20);
+    ctx.lineTo(0, 22 + flameH);
+    ctx.lineTo(8, 20);
+    ctx.closePath();
+    ctx.fill();
+
+    /* wing / hull */
+    ctx.beginPath();
+    ctx.moveTo(0, -28);
+    ctx.lineTo(28, 10);
+    ctx.lineTo(18, 22);
+    ctx.lineTo(-18, 22);
+    ctx.lineTo(-28, 10);
+    ctx.closePath();
+    const hull = ctx.createLinearGradient(0, -28, 0, 24);
+    hull.addColorStop(0, "#f4f7ff");
+    hull.addColorStop(0.45, accent);
+    hull.addColorStop(1, "#1a1a2e");
+    ctx.fillStyle = hull;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#000";
+    ctx.stroke();
+
+    /* wing stripes */
+    ctx.strokeStyle = "#ffc42e";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-22, 8); ctx.lineTo(-10, 18);
+    ctx.moveTo(22, 8); ctx.lineTo(10, 18);
+    ctx.stroke();
+
+    /* cockpit ring + portrait */
+    const pr = 16;
+    ctx.beginPath();
+    ctx.arc(0, -4, pr + 3, 0, Math.PI * 2);
+    ctx.fillStyle = "#04113d";
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#ffc42e";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, -4, pr + 3, 0, Math.PI * 2);
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 2;
-    ctx.strokeRect(ship.x - CB_SHIP_W / 2, ship.y - CB_SHIP_H / 2, CB_SHIP_W, CB_SHIP_H);
+    ctx.stroke();
 
-    ctx.strokeStyle = "#00e5ff";
-    ctx.lineWidth = CB_LASER_W;
-    ctx.lineCap = "butt";
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, -4, pr, 0, Math.PI * 2);
+    ctx.clip();
+    if(heroReadyRef.current && heroImgRef.current){
+      ctx.drawImage(heroImgRef.current, -pr, -4 - pr, pr * 2, pr * 2);
+    }else{
+      ctx.fillStyle = accent;
+      ctx.fillRect(-pr, -4 - pr, pr * 2, pr * 2);
+      ctx.fillStyle = "#fff";
+      ctx.font = "18px Luckiest Guy,Impact,sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText((th.badge || "★"), 0, -3);
+    }
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(0, -4, pr, 0, Math.PI * 2);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    /* nose tip */
+    ctx.fillStyle = "#ffc42e";
+    ctx.beginPath();
+    ctx.moveTo(0, -30);
+    ctx.lineTo(5, -20);
+    ctx.lineTo(-5, -20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.restore();
+  };
+
+  const drawCoin = function(ctx, coin, badge){
+    ctx.save();
+    ctx.translate(coin.x, coin.y);
+    ctx.rotate(coin.spin || 0);
+    ctx.globalAlpha = 0.28;
+    ctx.beginPath();
+    ctx.ellipse(2, coin.r + 3, coin.r * 0.85, 4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#000";
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    const rg = ctx.createRadialGradient(-5, -5, 2, 0, 0, coin.r);
+    rg.addColorStop(0, "#fff3b0");
+    rg.addColorStop(0.45, "#ffc42e");
+    rg.addColorStop(1, "#c97a00");
+    ctx.beginPath();
+    ctx.arc(0, 0, coin.r, 0, Math.PI * 2);
+    ctx.fillStyle = rg;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#8a5300";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, coin.r * 0.62, 0, Math.PI * 2);
+    ctx.strokeStyle = "#b87300";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "#8a5300";
+    ctx.font = "bold 15px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(badge || "★", 0, 1);
+    ctx.restore();
+  };
+
+  const drawFrame = function(ctx, now){
+    const th = themeRef.current;
+    const t = now || performance.now();
+    const shake = shakeRef.current;
+    ctx.save();
+    if(shake > 0){
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    }
+
+    const sky = ctx.createLinearGradient(0, 0, 0, CB_H);
+    sky.addColorStop(0, th.top || "#1a3fa0");
+    sky.addColorStop(0.55, "#071433");
+    sky.addColorStop(1, th.bottom || "#020617");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, CB_W, CB_H);
+
+    /* nebula wash */
+    ctx.fillStyle = "rgba(255,196,46,0.06)";
+    ctx.beginPath();
+    ctx.arc(CB_W * 0.2, CB_H * 0.25, 90, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(90,169,255,0.08)";
+    ctx.beginPath();
+    ctx.arc(CB_W * 0.8, CB_H * 0.4, 110, 0, Math.PI * 2);
+    ctx.fill();
+
+    starsRef.current.forEach(function(s){
+      ctx.globalAlpha = s.a * (0.7 + Math.sin(t * 0.01 + s.x) * 0.3);
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    /* distant planet */
+    ctx.beginPath();
+    ctx.arc(CB_W - 48, 70, 28, 0, Math.PI * 2);
+    const pg = ctx.createRadialGradient(CB_W - 56, 62, 4, CB_W - 48, 70, 28);
+    pg.addColorStop(0, "#ffe08a");
+    pg.addColorStop(1, "rgba(200,120,20,0.15)");
+    ctx.fillStyle = pg;
+    ctx.fill();
+
     lasersRef.current.forEach(function(laser){
+      const lg = ctx.createLinearGradient(laser.x, laser.y, laser.x, laser.y - CB_LASER_H);
+      lg.addColorStop(0, "rgba(0,229,255,0)");
+      lg.addColorStop(0.3, "#fff");
+      lg.addColorStop(1, "#00e5ff");
+      ctx.strokeStyle = lg;
+      ctx.lineWidth = CB_LASER_W + 2;
+      ctx.lineCap = "round";
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath();
+      ctx.moveTo(laser.x, laser.y + 4);
+      ctx.lineTo(laser.x, laser.y - CB_LASER_H - 6);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#b8ffff";
+      ctx.lineWidth = CB_LASER_W;
       ctx.beginPath();
       ctx.moveTo(laser.x, laser.y);
       ctx.lineTo(laser.x, laser.y - CB_LASER_H);
       ctx.stroke();
     });
 
-    ctx.fillStyle = "#ffc42e";
-    coinsRef.current.forEach(function(coin){
+    const badge = th.badge || "★";
+    coinsRef.current.forEach(function(coin){ drawCoin(ctx, coin, badge); });
+
+    particlesRef.current.forEach(function(pt){
+      ctx.globalAlpha = Math.max(0, pt.life);
+      ctx.fillStyle = pt.color;
       ctx.beginPath();
-      ctx.arc(coin.x, coin.y, CB_COIN_R, 0, Math.PI * 2);
+      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
       ctx.fill();
     });
+    ctx.globalAlpha = 1;
 
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 20px Nunito,sans-serif";
+    floatsRef.current.forEach(function(f){
+      ctx.globalAlpha = Math.max(0, f.life);
+      ctx.fillStyle = f.color;
+      ctx.font = "900 16px Luckiest Guy,Impact,sans-serif";
+      ctx.textAlign = "center";
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 3;
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillText(f.text, f.x, f.y);
+    });
+    ctx.globalAlpha = 1;
+
+    if(stageRef.current === "playing" || stageRef.current === "ready" || stageRef.current === "won" || stageRef.current === "complete"){
+      drawShip(ctx, shipRef.current, t);
+    }
+
+    /* HUD panels */
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.strokeStyle = "#ffc42e";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(8, 8, 118, 36, 8) : ctx.rect(8, 8, 118, 36);
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(CB_W - 96, 8, 88, 36, 8) : ctx.rect(CB_W - 96, 8, 88, 36);
+    ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = "#ffc42e";
+    ctx.font = "900 15px Luckiest Guy,Impact,sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText("Hits: " + hitsRef.current + "/" + CB_TARGET_HITS, 12, 28);
-    ctx.textAlign = "right";
+    ctx.fillText("HITS " + hitsRef.current + "/" + CB_TARGET_HITS, 16, 32);
     const secs = Math.max(0, secsLeftRef.current);
-    const label = "0:" + (secs < 10 ? "0" : "") + secs;
-    ctx.fillText(label, CB_W - 12, 28);
+    const urgent = secs <= 5;
+    ctx.fillStyle = urgent ? "#ff5b5b" : "#fff";
+    ctx.textAlign = "right";
+    ctx.fillText("0:" + (secs < 10 ? "0" : "") + secs, CB_W - 16, 32);
+
+    /* progress bar */
+    const barX = 10, barY = CB_H - 14, barW = CB_W - 20, barH = 6;
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(barX, barY, barW, barH);
+    ctx.fillStyle = "#ffc42e";
+    ctx.fillRect(barX, barY, barW * Math.min(1, hitsRef.current / CB_TARGET_HITS), barH);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barW, barH);
+
+    if(flashRef.current > 0){
+      ctx.fillStyle = "rgba(255,243,176," + (flashRef.current * 0.25) + ")";
+      ctx.fillRect(0, 0, CB_W, CB_H);
+    }
+
+    ctx.restore();
   };
 
   const endRound = function(won){
@@ -2801,17 +3184,40 @@ function CoinBlasterGame(props){
     animationFrameRef.current = 0;
     setResultWon(!!won);
     if(won){
+      playBlasterSfx("win");
+      try{ if(navigator.vibrate) navigator.vibrate([30, 40, 50, 30]); }catch(e){}
+      celebrateRef.current = true;
+      spawnBurst(shipRef.current.x, shipRef.current.y - 20, 28, "#ffc42e", "#fff3b0");
+      spawnBurst(CB_W / 2, CB_H / 3, 20, themeRef.current.particleA || "#ffc42e", "#fff");
       setStage("won");
+      const canvas = canvasRef.current;
+      if(canvas){
+        var frames = 0;
+        const celebrateTick = function(){
+          frames += 1;
+          particlesRef.current = particlesRef.current.filter(function(pt){
+            pt.x += pt.vx; pt.y += pt.vy; pt.vy += 0.12; pt.life -= 0.03;
+            return pt.life > 0;
+          });
+          drawFrame(canvas.getContext("2d"), performance.now());
+          if(frames < 36 && particlesRef.current.length){
+            animationFrameRef.current = requestAnimationFrame(celebrateTick);
+          }
+        };
+        animationFrameRef.current = requestAnimationFrame(celebrateTick);
+      }
       Promise.resolve(awardReward(reward)).then(function(result){
         awardResultRef.current = result || null;
         const amt = result && result.amountAwarded != null ? result.amountAwarded : (reward.amount || 1);
         setResultAmount(amt);
+        setBoostFlash(!!(result && result.boostApplied));
         setStage("complete");
       }).catch(function(){
         setResultAmount(reward.amount || 1);
         setStage("complete");
       });
     }else{
+      playBlasterSfx("lose");
       setResultAmount(null);
       setStage("complete");
     }
@@ -2823,8 +3229,23 @@ function CoinBlasterGame(props){
     const ship = shipRef.current;
     lasersRef.current.push({
       x: ship.x,
-      y: ship.y - CB_SHIP_H / 2 - 2
+      y: ship.y - 30
     });
+    ship.thrust = 1;
+    playBlasterSfx("laser");
+    if(!reducedRef.current){
+      particlesRef.current.push({
+        x: ship.x, y: ship.y + 18,
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: 1.5 + Math.random(),
+        r: 2 + Math.random() * 2,
+        life: 0.7,
+        color: "#ff9a3c"
+      });
+      if(particlesRef.current.length > CB_MAX_PARTICLES){
+        particlesRef.current.splice(0, particlesRef.current.length - CB_MAX_PARTICLES);
+      }
+    }
   };
 
   const spawnRatePerSec = function(elapsedMs){
@@ -2847,18 +3268,26 @@ function CoinBlasterGame(props){
       if(secs !== secsLeftRef.current){
         secsLeftRef.current = secs;
         setHudSecs(secs);
+        if(secs > 0 && secs <= 5) playBlasterSfx("tick");
       }
 
       if(leftMs <= 0){
         endRound(false);
         const canvas = canvasRef.current;
-        if(canvas) drawFrame(canvas.getContext("2d"));
+        if(canvas) drawFrame(canvas.getContext("2d"), now);
         return;
       }
 
       const steer = clamp(buttonSteerRef.current + keySteerRef.current, -1, 1);
       const ship = shipRef.current;
-      ship.x = clamp(ship.x + steer * CB_SHIP_SPEED, CB_SHIP_W / 2 + 4, CB_W - CB_SHIP_W / 2 - 4);
+      ship.x = clamp(ship.x + steer * CB_SHIP_SPEED, CB_SHIP_W / 2 + 6, CB_W - CB_SHIP_W / 2 - 6);
+      ship.tilt += (steer - ship.tilt) * 0.25;
+      ship.thrust *= 0.85;
+
+      starsRef.current.forEach(function(s){
+        s.y += s.speed * (1 + elapsed / 40000);
+        if(s.y > CB_H){ s.y = -2; s.x = Math.random() * CB_W; }
+      });
 
       if(fireHeldRef.current) tryFire(now);
 
@@ -2867,15 +3296,18 @@ function CoinBlasterGame(props){
       if(now - lastSpawnMsRef.current >= spawnEvery){
         lastSpawnMsRef.current = now;
         coinsRef.current.push({
-          x: CB_COIN_R + 8 + Math.random() * (CB_W - CB_COIN_R * 2 - 16),
+          x: CB_COIN_R + 10 + Math.random() * (CB_W - CB_COIN_R * 2 - 20),
           y: -CB_COIN_R,
-          r: CB_COIN_R
+          r: CB_COIN_R,
+          spin: Math.random() * Math.PI,
+          spinSpeed: (Math.random() - 0.5) * 0.12
         });
       }
 
       const fall = coinFallSpeed(elapsed);
       coinsRef.current = coinsRef.current.filter(function(coin){
         coin.y += fall;
+        coin.spin += coin.spinSpeed || 0;
         return coin.y - coin.r < CB_H + 4;
       });
 
@@ -2883,6 +3315,17 @@ function CoinBlasterGame(props){
         laser.y -= CB_LASER_SPEED;
         return laser.y + CB_LASER_H > 0;
       });
+
+      particlesRef.current = particlesRef.current.filter(function(pt){
+        pt.x += pt.vx; pt.y += pt.vy; pt.vy += 0.08; pt.life -= 0.035;
+        return pt.life > 0;
+      });
+      floatsRef.current = floatsRef.current.filter(function(f){
+        f.y -= 0.9; f.life -= 0.025;
+        return f.life > 0;
+      });
+      if(shakeRef.current > 0) shakeRef.current *= 0.85;
+      if(flashRef.current > 0) flashRef.current -= 0.08;
 
       const lasers = lasersRef.current;
       const coins = coinsRef.current;
@@ -2893,17 +3336,24 @@ function CoinBlasterGame(props){
         const ly2 = laser.y;
         for(var ci = coins.length - 1; ci >= 0; ci--){
           const coin = coins[ci];
-          const dx = lx - coin.x;
-          if(Math.abs(dx) > coin.r + CB_LASER_W) continue;
+          if(Math.abs(lx - coin.x) > coin.r + CB_LASER_W) continue;
           if(ly2 < coin.y - coin.r || ly1 > coin.y + coin.r) continue;
+          const hx = coin.x, hy = coin.y;
           coins.splice(ci, 1);
           lasers.splice(li, 1);
           hitsRef.current += 1;
           setHudHits(hitsRef.current);
+          playBlasterSfx("hit");
+          try{ if(navigator.vibrate) navigator.vibrate(18); }catch(e){}
+          shakeRef.current = 5;
+          flashRef.current = 1;
+          spawnBurst(hx, hy, 12, "#ffc42e", "#fff3b0");
+          const cheers = ["POW!", "ZAP!", "BOOM!", "NICE!", "YES!"];
+          pushFloat(hx, hy - 8, cheers[Math.min(cheers.length - 1, hitsRef.current - 1)] || "POW!", "#ffc42e");
           if(hitsRef.current >= CB_TARGET_HITS){
             endRound(true);
             const canvasWin = canvasRef.current;
-            if(canvasWin) drawFrame(canvasWin.getContext("2d"));
+            if(canvasWin) drawFrame(canvasWin.getContext("2d"), now);
             return;
           }
           break;
@@ -2911,7 +3361,7 @@ function CoinBlasterGame(props){
       }
 
       const canvas = canvasRef.current;
-      if(canvas) drawFrame(canvas.getContext("2d"));
+      if(canvas) drawFrame(canvas.getContext("2d"), now);
       animationFrameRef.current = requestAnimationFrame(tick);
     };
 
@@ -2923,7 +3373,7 @@ function CoinBlasterGame(props){
 
   useEffect(function(){
     const canvas = canvasRef.current;
-    if(canvas) drawFrame(canvas.getContext("2d"));
+    if(canvas) drawFrame(canvas.getContext("2d"), performance.now());
 
     const onKeyDown = function(e){
       if(e.key === "Escape"){
@@ -2941,6 +3391,7 @@ function CoinBlasterGame(props){
       }else if(e.key === " " || e.code === "Space"){
         e.preventDefault();
         fireHeldRef.current = true;
+        setFiringUi(true);
       }
     };
     const onKeyUp = function(e){
@@ -2950,6 +3401,7 @@ function CoinBlasterGame(props){
         if(keySteerRef.current > 0) keySteerRef.current = 0;
       }else if(e.key === " " || e.code === "Space"){
         fireHeldRef.current = false;
+        setFiringUi(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -2961,18 +3413,52 @@ function CoinBlasterGame(props){
     };
   }, []);
 
+  /* idle preview bob on ready screen */
+  useEffect(function(){
+    if(gameStage !== "ready") return;
+    var alive = true;
+    const tick = function(now){
+      if(!alive || stageRef.current !== "ready") return;
+      const ship = shipRef.current;
+      ship.y = CB_H - 56 + Math.sin(now / 350) * 3;
+      ship.tilt = Math.sin(now / 500) * 0.35;
+      ship.thrust = 0.5 + Math.sin(now / 180) * 0.25;
+      starsRef.current.forEach(function(s){
+        s.y += s.speed * 0.4;
+        if(s.y > CB_H){ s.y = -2; s.x = Math.random() * CB_W; }
+      });
+      const canvas = canvasRef.current;
+      if(canvas) drawFrame(canvas.getContext("2d"), now);
+      animationFrameRef.current = requestAnimationFrame(tick);
+    };
+    animationFrameRef.current = requestAnimationFrame(tick);
+    return function(){
+      alive = false;
+      if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [gameStage]);
+
   const startGame = function(){
     if(stageRef.current !== "ready") return;
+    blasterAudioCtx();
+    playBlasterSfx("start");
     finishedRef.current = false;
+    celebrateRef.current = false;
     hitsRef.current = 0;
     lasersRef.current = [];
     coinsRef.current = [];
-    shipRef.current = {x: CB_W / 2, y: CB_H - 48};
+    particlesRef.current = [];
+    floatsRef.current = [];
+    starsRef.current = cbBuildStars();
+    shipRef.current = {x: CB_W / 2, y: CB_H - 56, tilt: 0, thrust: 0};
     secsLeftRef.current = 30;
+    shakeRef.current = 0;
+    flashRef.current = 0;
     setHudHits(0);
     setHudSecs(30);
     setResultAmount(null);
     setResultWon(false);
+    setBoostFlash(false);
     const now = performance.now();
     startMsRef.current = now;
     lastSpawnMsRef.current = now;
@@ -2989,7 +3475,6 @@ function CoinBlasterGame(props){
     stageRef.current = "lost";
     if(animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     animationFrameRef.current = 0;
-    /* Lose / quit — do not award */
     onClose();
   };
   closeHandlerRef.current = handleClose;
@@ -3000,50 +3485,56 @@ function CoinBlasterGame(props){
 
   const isPractice = !!(reward && reward.source === "test-blaster");
   const showResult = gameStage === "complete" || gameStage === "won";
+  const kidName = (kid && kid.name) || "Hero";
 
-  let headTitle = "Coin Blaster!";
-  if(reward && reward.source === "powerup-coin-blaster") headTitle = "Coin Blaster!";
-  else if(isPractice) headTitle = "Test Blaster!";
+  let headTitle = "🚀 Hero Blaster!";
+  if(isPractice) headTitle = "Test Flight!";
   if(showResult){
-    headTitle = resultWon ? "You won!" : "Almost!";
+    headTitle = resultWon ? "MISSION CLEAR!" : "Almost, hero!";
   }
 
   const instruct = gameStage === "ready"
-    ? "Hit " + CB_TARGET_HITS + " coins before time runs out"
+    ? kidName + " — blast " + CB_TARGET_HITS + " coins from the sky!"
     : showResult
-      ? (resultWon ? "Tap Done when you're ready" : "No coins this time — tap Done")
-      : "◀ ▶ to move · FIRE or Space to shoot";
+      ? (resultWon ? "Legendary — tap Done when ready" : "No coins this run — tap Done")
+      : "Steer your ship · hold FIRE for lasers";
 
   return (
-    <div className="modal coin-drop-modal">
-      <div className={"coin-drop-sheet kid-"+(kid && kid.id)} onClick={function(e){ e.stopPropagation(); }}>
+    <div className="modal coin-drop-modal coin-blaster-modal">
+      <div className={"coin-drop-sheet coin-blaster-sheet kid-"+(kid && kid.id)} onClick={function(e){ e.stopPropagation(); }}>
         <div className="coin-drop-head">
           <h2 className="comic">{headTitle}</h2>
           <p className="coin-drop-instructions">{instruct}</p>
         </div>
 
-        <div className="coin-drop-board">
+        <div className="coin-drop-board coin-blaster-board">
           <canvas
             ref={canvasRef}
             className="coin-drop-canvas"
             width={CB_W}
             height={CB_H}
             role="img"
-            aria-label={"Coin Blaster. Hits "+hudHits+" of "+CB_TARGET_HITS+". "+hudSecs+" seconds left."}
+            aria-label={"Hero Blaster. "+kidName+" ship. Hits "+hudHits+" of "+CB_TARGET_HITS+". "+hudSecs+" seconds left."}
           />
           {gameStage === "ready" && (
-            <div className="coin-drop-rules" aria-live="polite">
-              <p className="coin-drop-rules-title">How to play</p>
+            <div className="coin-drop-rules coin-blaster-rules" aria-live="polite" style={{borderColor: theme.accent}}>
+              <p className="coin-drop-rules-title" style={{color: theme.accent}}>Hero mission</p>
               <ol className="coin-drop-rules-list">
-                <li>Move with <strong>◀ ▶</strong> or arrow keys</li>
-                <li>Hold <strong>FIRE</strong> or Space to shoot lasers</li>
-                <li>Hit <strong>{CB_TARGET_HITS} coins</strong> in 30 seconds to win</li>
+                <li>Pilot <strong>{kidName}</strong>&apos;s spaceship with ◀ ▶</li>
+                <li>Hold <strong>FIRE</strong> (or Space) for laser beams</li>
+                <li>Blast <strong>{CB_TARGET_HITS} coins</strong> before the clock hits zero</li>
               </ol>
+              <div className="coin-drop-slide-hint" aria-hidden="true">
+                <span className="coin-drop-finger">🚀</span>
+                <span>Launch when ready</span>
+              </div>
             </div>
           )}
           {showResult ? (
             <div className={"coin-drop-result" + (resultWon ? " is-vault" : " is-side")}>
-              <div className="comic burst-label">{resultWon ? "You won!" : "Almost!"}</div>
+              <div className="comic burst-label">{resultWon ? "MISSION CLEAR!" : "Almost!"}</div>
+              {resultWon && <div className="coin-drop-sub">Hero flight complete</div>}
+              {boostFlash && <div className="coin-drop-boost">2× POWER-UP!</div>}
               {resultWon && isPractice
                 ? <div className="coin-drop-amt coin-drop-practice">Practice — no coins added</div>
                 : resultWon && resultAmount != null && (
@@ -3055,8 +3546,8 @@ function CoinBlasterGame(props){
         </div>
 
         {gameStage === "ready" && (
-          <button className="btn go coin-drop-start" type="button" onClick={startGame}>
-            Start Blaster
+          <button className="btn go coin-drop-start coin-blaster-start" type="button" onClick={startGame}>
+            🚀 Launch!
           </button>
         )}
 
@@ -3073,7 +3564,7 @@ function CoinBlasterGame(props){
             <button
               type="button"
               className="coin-drop-arrow"
-              aria-label="Move left"
+              aria-label="Steer left"
               onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = -1; }}
               onPointerUp={function(){ buttonSteerRef.current = 0; }}
               onPointerLeave={function(){ buttonSteerRef.current = 0; }}
@@ -3081,17 +3572,17 @@ function CoinBlasterGame(props){
             >◀ LEFT</button>
             <button
               type="button"
-              className="coin-drop-jump coin-blaster-fire"
+              className={"coin-drop-jump coin-blaster-fire" + (firingUi ? " is-firing" : "")}
               aria-label="Fire lasers"
-              onPointerDown={function(e){ e.preventDefault(); fireHeldRef.current = true; }}
-              onPointerUp={function(){ fireHeldRef.current = false; }}
-              onPointerLeave={function(){ fireHeldRef.current = false; }}
-              onPointerCancel={function(){ fireHeldRef.current = false; }}
+              onPointerDown={function(e){ e.preventDefault(); setFireHeld(true); }}
+              onPointerUp={function(){ setFireHeld(false); }}
+              onPointerLeave={function(){ setFireHeld(false); }}
+              onPointerCancel={function(){ setFireHeld(false); }}
             >⚡ FIRE</button>
             <button
               type="button"
               className="coin-drop-arrow"
-              aria-label="Move right"
+              aria-label="Steer right"
               onPointerDown={function(e){ e.preventDefault(); buttonSteerRef.current = 1; }}
               onPointerUp={function(){ buttonSteerRef.current = 0; }}
               onPointerLeave={function(){ buttonSteerRef.current = 0; }}
