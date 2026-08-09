@@ -3440,7 +3440,7 @@ function MazeDashGame(props) {
 /* ================= COIN BLASTER (hero ship) ================= */
 var CB_W = 360;
 var CB_H = 520;
-var CB_TARGET_COINS = 14;
+var CB_TARGET_COINS = 20;
 var CB_DURATION_MS = 60000;
 var CB_DURATION_SECS = 60;
 var CB_LIVES = 3;
@@ -4254,9 +4254,10 @@ function CoinBlasterGame(props) {
     }
   };
   var spawnRatePerSec = function spawnRatePerSec(elapsedMs, wave) {
-    if (wave === 1) return 0.7 + elapsedMs / 20000 * 0.35;
-    if (wave === 2) return 0.95 + (elapsedMs - 20000) / 20000 * 0.45;
-    return 1.15 + (elapsedMs - 40000) / 20000 * 0.55;
+    /* Slightly lean early so 20 coins fills more of the minute */
+    if (wave === 1) return 0.55 + elapsedMs / 20000 * 0.3;
+    if (wave === 2) return 0.85 + (elapsedMs - 20000) / 20000 * 0.4;
+    return 1.05 + (elapsedMs - 40000) / 20000 * 0.5;
   };
   var coinFallSpeed = function coinFallSpeed(elapsedMs) {
     return 1.35 + Math.min(2.1, elapsedMs / CB_DURATION_MS * 2.1);
@@ -5714,7 +5715,7 @@ function App() {
       setPendingReward(_reward);
       deferUnlockModalRef.current = true;
       setModal("coinBlaster");
-      flash("Coin Blaster — collect 14 coins!");
+      flash("Coin Blaster — collect 20 coins!");
       return;
     }
   };
