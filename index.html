@@ -691,18 +691,34 @@ header{position:relative;text-align:center;padding:18px 6px 10px;margin-bottom:1
   background:#0a7ea4;background:linear-gradient(#1ec8ff,#0a7ea4);color:#fff;
   -webkit-box-flex:1.25;-webkit-flex:1.25;flex:1.25;min-height:64px;font-size:1.1rem;
   letter-spacing:1.5px;
-  box-shadow:0 5px 0 rgba(0,0,0,.7),0 0 0 0 rgba(30,200,255,.35);
+  box-shadow:0 5px 0 rgba(0,0,0,.7);
+}
+.coin-blaster-sheet.kid-sam .coin-blaster-fire{
+  background:linear-gradient(#ffd24a,#e85d04);color:#141414;
+}
+.coin-blaster-sheet.kid-isaac .coin-blaster-fire{
+  background:linear-gradient(#7af0ff,#1a6fd4);color:#fff;
+}
+.coin-blaster-sheet.kid-ben .coin-blaster-fire{
+  background:linear-gradient(#ff8a8a,#c41e1e);color:#fff;
 }
 .coin-blaster-fire:active,
 .coin-blaster-fire.is-firing{
-  background:linear-gradient(#7af0ff,#0891b2);
-  box-shadow:0 2px 0 rgba(0,0,0,.7),0 0 16px rgba(30,200,255,.55);
+  -webkit-transform:translateY(3px);transform:translateY(3px);
+  box-shadow:0 2px 0 rgba(0,0,0,.7);
+  filter:brightness(1.12);
 }
-.coin-blaster-modal .coin-blaster-sheet{
-  background:#071433;background:linear-gradient(180deg,#102a56 0%,#fdf6e3 42%);
+.coin-blaster-modal .coin-blaster-sheet.kid-sam{
+  background:linear-gradient(180deg,#7a2e00 0%,#fdf6e3 46%);
+}
+.coin-blaster-modal .coin-blaster-sheet.kid-isaac{
+  background:linear-gradient(180deg,#0a2f7a 0%,#fdf6e3 46%);
+}
+.coin-blaster-modal .coin-blaster-sheet.kid-ben{
+  background:linear-gradient(180deg,#6a0010 0%,#fdf6e3 46%);
 }
 .coin-blaster-board{
-  box-shadow:inset 0 0 0 2px rgba(255,196,46,.35),0 8px 0 rgba(0,0,0,.45);
+  box-shadow:inset 0 0 0 2px rgba(255,196,46,.4),0 8px 0 rgba(0,0,0,.45);
 }
 .coin-blaster-start{
   font-size:1.25rem;letter-spacing:1px;
