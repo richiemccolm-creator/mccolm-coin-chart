@@ -2840,21 +2840,24 @@ function MazeDashGame(props){
 /* ================= COIN BLASTER (hero ship) ================= */
 const CB_W = 360;
 const CB_H = 520;
-const CB_TARGET_HITS = 8;
+const CB_TARGET_COINS = 14;
 const CB_DURATION_MS = 60000;
 const CB_DURATION_SECS = 60;
-const CB_FIRE_MS = 220;
+const CB_LIVES = 3;
+const CB_FIRE_MS = 240;
 const CB_SHIP_W = 56;
 const CB_SHIP_H = 52;
-const CB_COIN_R = 15;
+const CB_COIN_R = 13;
 const CB_SCARY_R = 22;
 const CB_SCARY_HP = 3;
-const CB_LASER_H = 26;
-const CB_LASER_W = 5;
-const CB_LASER_SPEED = 12.5;
+const CB_LASER_H = 28;
+const CB_LASER_W = 4;
+const CB_LASER_SPEED = 13;
 const CB_SHIP_SPEED = 5.6;
-const CB_MAX_PARTICLES = 48;
-const CB_MAX_FLOATS = 6;
+const CB_LASER_GAP = 11;
+const CB_DANGER_Y = CB_H - 70;
+const CB_MAX_PARTICLES = 56;
+const CB_MAX_FLOATS = 8;
 
 function cbFormatTime(totalSecs){
   const secs = Math.max(0, Math.floor(totalSecs));
@@ -2863,15 +2866,23 @@ function cbFormatTime(totalSecs){
   return m + ":" + (s < 10 ? "0" : "") + s;
 }
 
+function cbWaveFromElapsed(elapsedMs){
+  if(elapsedMs < 20000) return 1;
+  if(elapsedMs < 40000) return 2;
+  return 3;
+}
+
 function cbBuildStars(){
   const stars = [];
-  for(var i = 0; i < 42; i++){
+  for(var i = 0; i < 56; i++){
+    const layer = i < 22 ? 0 : (i < 40 ? 1 : 2);
     stars.push({
       x: Math.random() * CB_W,
       y: Math.random() * CB_H,
-      r: 0.6 + Math.random() * 1.8,
-      speed: 0.35 + Math.random() * 1.4,
-      a: 0.35 + Math.random() * 0.55
+      r: layer === 0 ? 0.5 + Math.random() * 0.8 : (layer === 1 ? 0.8 + Math.random() * 1.2 : 1.2 + Math.random() * 1.6),
+      speed: layer === 0 ? 0.2 + Math.random() * 0.35 : (layer === 1 ? 0.5 + Math.random() * 0.7 : 1.0 + Math.random() * 1.3),
+      a: layer === 0 ? 0.25 + Math.random() * 0.35 : (0.4 + Math.random() * 0.5),
+      layer: layer
     });
   }
   return stars;
@@ -2956,7 +2967,9 @@ function CoinBlasterGame(props){
   const particlesRef = useRef([]);
   const floatsRef = useRef([]);
   const starsRef = useRef(cbBuildStars());
-  const hitsRef = useRef(0);
+  const cometsRef = useRef([]);
+  const coinsCollectedRef = useRef(0);
+  const livesRef = useRef(CB_LIVES);
   const startMsRef = useRef(0);
   const lastSpawnMsRef = useRef(0);
   const lastFireMsRef = useRef(0);
@@ -2967,6 +2980,12 @@ function CoinBlasterGame(props){
   const lastScarySpawnRef = useRef(0);
   const shakeRef = useRef(0);
   const flashRef = useRef(0);
+  const muzzleRef = useRef(0);
+  const hitStopRef = useRef(0);
+  const waveRef = useRef(1);
+  const waveBannerRef = useRef({text: "", life: 0});
+  const alertRef = useRef({text: "", life: 0});
+  const nebulaDriftRef = useRef(0);
   const reducedRef = useRef(prefersReducedMotion());
   const heroImgRef = useRef(null);
   const heroReadyRef = useRef(false);
@@ -2975,8 +2994,10 @@ function CoinBlasterGame(props){
   const celebrateRef = useRef(false);
 
   const [gameStage, setGameStage] = useState("ready");
-  const [hudHits, setHudHits] = useState(0);
+  const [hudCoins, setHudCoins] = useState(0);
+  const [hudLives, setHudLives] = useState(CB_LIVES);
   const [hudSecs, setHudSecs] = useState(CB_DURATION_SECS);
+  const [hudWave, setHudWave] = useState(1);
   const [resultWon, setResultWon] = useState(false);
   const [resultAmount, setResultAmount] = useState(null);
   const [boostFlash, setBoostFlash] = useState(false);
@@ -3164,13 +3185,20 @@ function CoinBlasterGame(props){
     ctx.restore();
   };
 
-  /* Comic space bugs — take several hits */
+  /* Comic space bugs — take several hits; look scarier as HP drops */
   const drawScary = function(ctx, foe, t){
     ctx.save();
     ctx.translate(foe.x, foe.y + Math.sin((t || 0) * 0.01 + foe.x) * 2);
+    const maxHp = foe.maxHp || CB_SCARY_HP;
+    const hp = Math.max(0, foe.hp || 0);
     const hurt = foe.flash || 0;
-    const body = hurt > 0 ? "#ff6b6b" : "#2a2a2a";
+    const damaged = maxHp - hp;
+    const body = hurt > 0 ? "#ff6b6b" : (damaged >= 2 ? "#3a1010" : (damaged >= 1 ? "#2f1a1a" : "#2a2a2a"));
     const belly = hurt > 0 ? "#ffb0b0" : "#3d3d3d";
+    const eyeWhite = damaged >= 2 ? "#ffb0b0" : "#ffc42e";
+    const eyePupil = damaged >= 1 ? "#ff1a1a" : "#c41e1e";
+    const eyeScale = damaged >= 2 ? 1.25 : 1;
+
     ctx.beginPath();
     ctx.ellipse(0, 2, foe.r * 0.95, foe.r * 0.75, 0, 0, Math.PI * 2);
     ctx.fillStyle = body;
@@ -3178,6 +3206,21 @@ function CoinBlasterGame(props){
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#000";
     ctx.stroke();
+
+    /* armour cracks when damaged */
+    if(damaged >= 1){
+      ctx.strokeStyle = damaged >= 2 ? "#ff5b5b" : "#5a2020";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-12, -4); ctx.lineTo(-2, 6); ctx.lineTo(-8, 12);
+      ctx.stroke();
+    }
+    if(damaged >= 2){
+      ctx.beginPath();
+      ctx.moveTo(10, -6); ctx.lineTo(4, 4); ctx.lineTo(12, 10);
+      ctx.stroke();
+    }
+
     /* horns */
     ctx.fillStyle = "#1a1a1a";
     ctx.beginPath();
@@ -3186,6 +3229,7 @@ function CoinBlasterGame(props){
     ctx.lineTo(-4, -foe.r * 0.45);
     ctx.closePath();
     ctx.fill();
+    ctx.strokeStyle = "#000";
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(10, -foe.r * 0.4);
@@ -3194,17 +3238,19 @@ function CoinBlasterGame(props){
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+
     /* eyes */
-    ctx.fillStyle = "#ffc42e";
+    ctx.fillStyle = eyeWhite;
     ctx.beginPath();
-    ctx.arc(-7, -2, 4.5, 0, Math.PI * 2);
-    ctx.arc(7, -2, 4.5, 0, Math.PI * 2);
+    ctx.arc(-7, -2, 4.5 * eyeScale, 0, Math.PI * 2);
+    ctx.arc(7, -2, 4.5 * eyeScale, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#c41e1e";
+    ctx.fillStyle = eyePupil;
     ctx.beginPath();
-    ctx.arc(-7, -2, 2.2, 0, Math.PI * 2);
-    ctx.arc(7, -2, 2.2, 0, Math.PI * 2);
+    ctx.arc(-7, -2, 2.2 * eyeScale, 0, Math.PI * 2);
+    ctx.arc(7, -2, 2.2 * eyeScale, 0, Math.PI * 2);
     ctx.fill();
+
     /* teeth grin */
     ctx.fillStyle = belly;
     ctx.beginPath();
@@ -3219,9 +3265,8 @@ function CoinBlasterGame(props){
     ctx.strokeRect(-6, 5, 3, 5);
     ctx.strokeRect(-1, 5, 3, 5);
     ctx.strokeRect(4, 5, 3, 5);
+
     /* HP pips */
-    const maxHp = foe.maxHp || CB_SCARY_HP;
-    const hp = Math.max(0, foe.hp || 0);
     for(var p = 0; p < maxHp; p++){
       ctx.beginPath();
       ctx.arc(-10 + p * 10, -foe.r - 6, 3.5, 0, Math.PI * 2);
@@ -3239,6 +3284,7 @@ function CoinBlasterGame(props){
     const pal = paletteRef.current;
     const t = now || performance.now();
     const shake = shakeRef.current;
+    const drift = nebulaDriftRef.current;
     ctx.save();
     if(shake > 0){
       ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
@@ -3251,24 +3297,41 @@ function CoinBlasterGame(props){
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, CB_W, CB_H);
 
-    /* nebula wash — kid-tinted */
+    /* drifting nebula */
     ctx.fillStyle = pal.nebulaA;
     ctx.beginPath();
-    ctx.arc(CB_W * 0.22, CB_H * 0.22, 100, 0, Math.PI * 2);
+    ctx.arc(CB_W * 0.22 + Math.sin(drift) * 18, CB_H * 0.22, 100, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = pal.nebulaB;
     ctx.beginPath();
-    ctx.arc(CB_W * 0.78, CB_H * 0.42, 120, 0, Math.PI * 2);
+    ctx.arc(CB_W * 0.78 + Math.cos(drift * 0.8) * 22, CB_H * 0.42, 120, 0, Math.PI * 2);
     ctx.fill();
 
     starsRef.current.forEach(function(s){
       ctx.globalAlpha = s.a * (0.7 + Math.sin(t * 0.01 + s.x) * 0.3);
-      ctx.fillStyle = s.r > 1.4 ? pal.laserMid : "#fff";
+      ctx.fillStyle = s.layer === 2 ? pal.laserMid : "#fff";
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
       ctx.fill();
     });
     ctx.globalAlpha = 1;
+
+    /* comets */
+    cometsRef.current.forEach(function(c){
+      const cg = ctx.createLinearGradient(c.x, c.y, c.x - c.vx * 8, c.y - c.vy * 8);
+      cg.addColorStop(0, "#fff");
+      cg.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.strokeStyle = cg;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y);
+      ctx.lineTo(c.x - c.vx * 10, c.y - c.vy * 10);
+      ctx.stroke();
+      ctx.fillStyle = "#fff8e0";
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
 
     /* distant planet */
     ctx.beginPath();
@@ -3282,11 +3345,32 @@ function CoinBlasterGame(props){
     ctx.lineWidth = 2;
     ctx.stroke();
 
+    /* danger zone */
+    if(stageRef.current === "playing"){
+      const dg = ctx.createLinearGradient(0, CB_DANGER_Y, 0, CB_H);
+      dg.addColorStop(0, "rgba(255,60,60,0)");
+      dg.addColorStop(1, "rgba(255,40,40,0.28)");
+      ctx.fillStyle = dg;
+      ctx.fillRect(0, CB_DANGER_Y, CB_W, CB_H - CB_DANGER_Y);
+      ctx.strokeStyle = "rgba(255,80,80,0.55)";
+      ctx.setLineDash([6, 5]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, CB_DANGER_Y);
+      ctx.lineTo(CB_W, CB_DANGER_Y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,200,200,0.75)";
+      ctx.font = "bold 10px Nunito,sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("DANGER — bugs steal a life!", CB_W / 2, CB_H - 8);
+    }
+
     lasersRef.current.forEach(function(laser){
       ctx.strokeStyle = pal.laserAura;
-      ctx.lineWidth = CB_LASER_W + 6;
+      ctx.lineWidth = CB_LASER_W + 5;
       ctx.lineCap = "round";
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = 0.4;
       ctx.beginPath();
       ctx.moveTo(laser.x, laser.y + 6);
       ctx.lineTo(laser.x, laser.y - CB_LASER_H - 8);
@@ -3304,7 +3388,7 @@ function CoinBlasterGame(props){
       ctx.stroke();
       ctx.fillStyle = pal.laserCore;
       ctx.beginPath();
-      ctx.arc(laser.x, laser.y - CB_LASER_H, 2.5, 0, Math.PI * 2);
+      ctx.arc(laser.x, laser.y - CB_LASER_H, 2.2, 0, Math.PI * 2);
       ctx.fill();
     });
 
@@ -3323,6 +3407,19 @@ function CoinBlasterGame(props){
     });
     ctx.globalAlpha = 1;
 
+    /* muzzle flash rings */
+    if(muzzleRef.current > 0){
+      const ship = shipRef.current;
+      const mf = muzzleRef.current;
+      ctx.strokeStyle = "rgba(255,255,255," + (mf * 0.7) + ")";
+      ctx.lineWidth = 2;
+      [-CB_LASER_GAP, CB_LASER_GAP].forEach(function(ox){
+        ctx.beginPath();
+        ctx.arc(ship.x + ox, ship.y - 28, 4 + (1 - mf) * 10, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+    }
+
     floatsRef.current.forEach(function(f){
       ctx.globalAlpha = Math.max(0, f.life);
       ctx.fillStyle = f.color;
@@ -3339,12 +3436,12 @@ function CoinBlasterGame(props){
       drawShip(ctx, shipRef.current, t);
     }
 
-    /* HUD — hits left, big timer right */
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    /* HUD — coins + lives left, timer right */
+    ctx.fillStyle = "rgba(0,0,0,0.62)";
     ctx.strokeStyle = pal.hud;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(8, 8, 112, 40, 8) : ctx.rect(8, 8, 112, 40);
+    ctx.roundRect ? ctx.roundRect(8, 8, 128, 52, 8) : ctx.rect(8, 8, 128, 52);
     ctx.fill(); ctx.stroke();
 
     const secs = Math.max(0, secsLeftRef.current);
@@ -3358,9 +3455,19 @@ function CoinBlasterGame(props){
     ctx.fill(); ctx.stroke();
 
     ctx.fillStyle = pal.hud;
-    ctx.font = "900 15px Luckiest Guy,Impact,sans-serif";
+    ctx.font = "900 14px Luckiest Guy,Impact,sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText("HITS " + hitsRef.current + "/" + CB_TARGET_HITS, 16, 34);
+    ctx.fillText("COINS " + coinsCollectedRef.current + "/" + CB_TARGET_COINS, 16, 28);
+    ctx.font = "bold 12px Nunito,sans-serif";
+    ctx.fillStyle = "#fff";
+    var hearts = "";
+    for(var hi = 0; hi < CB_LIVES; hi++){
+      hearts += hi < livesRef.current ? "♥ " : "♡ ";
+    }
+    ctx.fillText(hearts.trim(), 16, 48);
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.font = "bold 10px Nunito,sans-serif";
+    ctx.fillText("WAVE " + waveRef.current, 88, 48);
 
     ctx.fillStyle = urgent ? "#ffc42e" : "rgba(255,255,255,0.75)";
     ctx.font = "bold 11px Nunito,sans-serif";
@@ -3370,25 +3477,50 @@ function CoinBlasterGame(props){
     ctx.font = "900 26px Luckiest Guy,Impact,sans-serif";
     ctx.fillText(cbFormatTime(secs), CB_W - 63, 48);
 
-    /* hits progress + time strip */
-    const barX = 10, barY = CB_H - 18, barW = CB_W - 20, barH = 8;
+    /* coin progress bar */
+    const barX = 10, barY = CB_H - 28, barW = CB_W - 20, barH = 8;
     ctx.fillStyle = "rgba(0,0,0,0.5)";
     ctx.fillRect(barX, barY, barW, barH);
     const barFill = ctx.createLinearGradient(barX, 0, barX + barW, 0);
     barFill.addColorStop(0, pal.bar);
     barFill.addColorStop(1, pal.hud);
     ctx.fillStyle = barFill;
-    ctx.fillRect(barX, barY, barW * Math.min(1, hitsRef.current / CB_TARGET_HITS), barH);
+    ctx.fillRect(barX, barY, barW * Math.min(1, coinsCollectedRef.current / CB_TARGET_COINS), barH);
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 1.5;
     ctx.strokeRect(barX, barY, barW, barH);
 
-    /* thin time remaining bar under HUD */
     const timeFrac = Math.max(0, Math.min(1, secs / CB_DURATION_SECS));
     ctx.fillStyle = "rgba(0,0,0,0.4)";
     ctx.fillRect(CB_W - 118, 60, 110, 5);
     ctx.fillStyle = urgent ? "#ff5b5b" : pal.bar;
     ctx.fillRect(CB_W - 118, 60, 110 * timeFrac, 5);
+
+    /* wave / alert banners */
+    if(waveBannerRef.current.life > 0){
+      ctx.globalAlpha = Math.min(1, waveBannerRef.current.life);
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(40, CB_H * 0.28, CB_W - 80, 44);
+      ctx.strokeStyle = pal.hud;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(40, CB_H * 0.28, CB_W - 80, 44);
+      ctx.fillStyle = pal.hud;
+      ctx.font = "900 22px Luckiest Guy,Impact,sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(waveBannerRef.current.text, CB_W / 2, CB_H * 0.28 + 30);
+      ctx.globalAlpha = 1;
+    }
+    if(alertRef.current.life > 0){
+      ctx.globalAlpha = Math.min(1, alertRef.current.life);
+      ctx.fillStyle = "#ff3b3b";
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 3;
+      ctx.font = "900 18px Luckiest Guy,Impact,sans-serif";
+      ctx.textAlign = "center";
+      ctx.strokeText(alertRef.current.text, CB_W / 2, 96);
+      ctx.fillText(alertRef.current.text, CB_W / 2, 96);
+      ctx.globalAlpha = 1;
+    }
 
     if(flashRef.current > 0){
       ctx.globalAlpha = flashRef.current;
@@ -3450,13 +3582,23 @@ function CoinBlasterGame(props){
     if(now - lastFireMsRef.current < CB_FIRE_MS) return;
     lastFireMsRef.current = now;
     const ship = shipRef.current;
-    lasersRef.current.push({
-      x: ship.x,
-      y: ship.y - 30
-    });
+    const y = ship.y - 30;
+    lasersRef.current.push({x: ship.x - CB_LASER_GAP, y: y});
+    lasersRef.current.push({x: ship.x + CB_LASER_GAP, y: y});
     ship.thrust = 1;
+    muzzleRef.current = 1;
     playBlasterSfx("laser");
     if(!reducedRef.current){
+      [-CB_LASER_GAP, CB_LASER_GAP].forEach(function(ox){
+        particlesRef.current.push({
+          x: ship.x + ox, y: y,
+          vx: (Math.random() - 0.5) * 1.2,
+          vy: -1.2 - Math.random(),
+          r: 2 + Math.random() * 2.5,
+          life: 0.55,
+          color: paletteRef.current.laserCore
+        });
+      });
       particlesRef.current.push({
         x: ship.x, y: ship.y + 18,
         vx: (Math.random() - 0.5) * 0.8,
@@ -3471,13 +3613,30 @@ function CoinBlasterGame(props){
     }
   };
 
-  const spawnRatePerSec = function(elapsedMs){
-    const t = Math.min(1, elapsedMs / 40000);
-    return 0.9 + t * 1.6;
+  const spawnRatePerSec = function(elapsedMs, wave){
+    if(wave === 1) return 0.7 + (elapsedMs / 20000) * 0.35;
+    if(wave === 2) return 0.95 + ((elapsedMs - 20000) / 20000) * 0.45;
+    return 1.15 + ((elapsedMs - 40000) / 20000) * 0.55;
   };
 
   const coinFallSpeed = function(elapsedMs){
-    return 1.45 + Math.min(2.0, (elapsedMs / CB_DURATION_MS) * 2.0);
+    return 1.35 + Math.min(2.1, (elapsedMs / CB_DURATION_MS) * 2.1);
+  };
+
+  const loseLife = function(hx, hy){
+    livesRef.current = Math.max(0, livesRef.current - 1);
+    setHudLives(livesRef.current);
+    playBlasterSfx("thud");
+    shakeRef.current = 9;
+    flashRef.current = 1;
+    spawnBurst(hx, hy, 14, "#ff5b5b", "#fff");
+    pushFloat(hx, hy - 12, "LIFE LOST!", "#ff5b5b");
+    try{ if(navigator.vibrate) navigator.vibrate([40, 40, 60]); }catch(e){}
+    if(livesRef.current <= 0){
+      endRound(false);
+      return true;
+    }
+    return false;
   };
 
   useEffect(function(){
@@ -3485,6 +3644,15 @@ function CoinBlasterGame(props){
 
     const tick = function(now){
       if(stageRef.current !== "playing" || finishedRef.current) return;
+
+      if(hitStopRef.current > 0){
+        hitStopRef.current -= 1;
+        const canvasHold = canvasRef.current;
+        if(canvasHold) drawFrame(canvasHold.getContext("2d"), now);
+        animationFrameRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
       const elapsed = now - startMsRef.current;
       const leftMs = CB_DURATION_MS - elapsed;
       const secs = Math.ceil(Math.max(0, leftMs) / 1000);
@@ -3494,12 +3662,25 @@ function CoinBlasterGame(props){
         if(secs > 0 && secs <= 10) playBlasterSfx("tick");
       }
 
+      const wave = cbWaveFromElapsed(elapsed);
+      if(wave !== waveRef.current){
+        waveRef.current = wave;
+        setHudWave(wave);
+        waveBannerRef.current = {text: "WAVE " + wave + "!", life: 1.4};
+        playBlasterSfx("start");
+      }
+
       if(leftMs <= 0){
         endRound(false);
         const canvas = canvasRef.current;
         if(canvas) drawFrame(canvas.getContext("2d"), now);
         return;
       }
+
+      nebulaDriftRef.current += 0.008;
+      if(muzzleRef.current > 0) muzzleRef.current -= 0.12;
+      if(waveBannerRef.current.life > 0) waveBannerRef.current.life -= 0.02;
+      if(alertRef.current.life > 0) alertRef.current.life -= 0.018;
 
       const steer = clamp(buttonSteerRef.current + keySteerRef.current, -1, 1);
       const ship = shipRef.current;
@@ -3508,20 +3689,36 @@ function CoinBlasterGame(props){
       ship.thrust *= 0.85;
 
       starsRef.current.forEach(function(s){
-        s.y += s.speed * (1 + elapsed / 50000);
+        s.y += s.speed * (1 + elapsed / 55000);
         if(s.y > CB_H){ s.y = -2; s.x = Math.random() * CB_W; }
+      });
+
+      if(Math.random() < 0.006 && cometsRef.current.length < 2){
+        cometsRef.current.push({
+          x: Math.random() * CB_W * 0.6,
+          y: -10,
+          vx: 2.2 + Math.random() * 1.5,
+          vy: 3.2 + Math.random() * 1.8
+        });
+      }
+      cometsRef.current = cometsRef.current.filter(function(c){
+        c.x += c.vx; c.y += c.vy;
+        return c.x < CB_W + 40 && c.y < CB_H + 40;
       });
 
       if(fireHeldRef.current) tryFire(now);
 
-      const rate = spawnRatePerSec(elapsed);
+      const rate = spawnRatePerSec(elapsed, wave);
       const spawnEvery = 1000 / rate;
       if(now - lastSpawnMsRef.current >= spawnEvery){
         lastSpawnMsRef.current = now;
-        const scaryReady = elapsed > 4000 && (now - lastScarySpawnRef.current > 4500);
-        const spawnScary = scaryReady && Math.random() < 0.38;
+        const scaryGap = wave === 1 ? 7000 : (wave === 2 ? 4200 : 3000);
+        const scaryChance = wave === 1 ? 0.22 : (wave === 2 ? 0.4 : 0.55);
+        const scaryReady = elapsed > 5000 && (now - lastScarySpawnRef.current > scaryGap);
+        const spawnScary = scaryReady && Math.random() < scaryChance;
         if(spawnScary){
           lastScarySpawnRef.current = now;
+          alertRef.current = {text: "⚠ SPACE BUG!", life: 1.2};
           coinsRef.current.push({
             kind: "scary",
             x: CB_SCARY_R + 12 + Math.random() * (CB_W - CB_SCARY_R * 2 - 24),
@@ -3530,7 +3727,7 @@ function CoinBlasterGame(props){
             hp: CB_SCARY_HP,
             maxHp: CB_SCARY_HP,
             flash: 0,
-            wobble: (Math.random() - 0.5) * 1.2
+            wobble: (Math.random() - 0.5) * (1 + wave * 0.25)
           });
         }else{
           coinsRef.current.push({
@@ -3545,18 +3742,29 @@ function CoinBlasterGame(props){
       }
 
       const fall = coinFallSpeed(elapsed);
+      var lifeEnded = false;
       coinsRef.current = coinsRef.current.filter(function(coin){
+        if(lifeEnded) return true;
         if(coin.kind === "scary"){
-          coin.y += fall * 0.72;
+          coin.y += fall * (0.68 + wave * 0.04);
           coin.x = clamp(coin.x + (coin.wobble || 0), coin.r + 4, CB_W - coin.r - 4);
           if(coin.x <= coin.r + 4 || coin.x >= CB_W - coin.r - 4) coin.wobble *= -1;
           if(coin.flash > 0) coin.flash -= 0.08;
+          if(coin.y + coin.r >= CB_DANGER_Y + 18){
+            lifeEnded = loseLife(coin.x, Math.min(coin.y, CB_H - 40));
+            return false;
+          }
         }else{
           coin.y += fall;
           coin.spin += coin.spinSpeed || 0;
         }
         return coin.y - coin.r < CB_H + 4;
       });
+      if(lifeEnded || finishedRef.current){
+        const canvasLife = canvasRef.current;
+        if(canvasLife) drawFrame(canvasLife.getContext("2d"), now);
+        return;
+      }
 
       lasersRef.current = lasersRef.current.filter(function(laser){
         laser.y -= CB_LASER_SPEED;
@@ -3599,33 +3807,32 @@ function CoinBlasterGame(props){
               try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){}
               break;
             }
+            /* Bug zapped — cool feedback, does NOT count as a coin */
             coins.splice(ci, 1);
-            hitsRef.current += 1;
-            setHudHits(hitsRef.current);
             playBlasterSfx("hit");
             try{ if(navigator.vibrate) navigator.vibrate([20, 30, 20]); }catch(e){}
             shakeRef.current = 7;
             flashRef.current = 1;
-            spawnBurst(hx, hy, 16, "#ff5b5b", "#ffc42e");
+            hitStopRef.current = 3;
+            spawnBurst(hx, hy, 18, "#ff5b5b", "#ffc42e");
             pushFloat(hx, hy - 8, "BUG ZAPPED!", "#ffc42e");
           }else{
             coins.splice(ci, 1);
-            hitsRef.current += 1;
-            setHudHits(hitsRef.current);
+            coinsCollectedRef.current += 1;
+            setHudCoins(coinsCollectedRef.current);
             playBlasterSfx("hit");
             try{ if(navigator.vibrate) navigator.vibrate(18); }catch(e){}
-            shakeRef.current = 5;
-            flashRef.current = 1;
+            shakeRef.current = 4;
+            flashRef.current = 0.85;
             spawnBurst(hx, hy, 12, paletteRef.current.laserMid, paletteRef.current.laserCore);
-            const cheers = ["POW!", "ZAP!", "BOOM!", "NICE!", "YES!"];
-            pushFloat(hx, hy - 8, cheers[Math.min(cheers.length - 1, hitsRef.current - 1)] || "POW!", paletteRef.current.hud);
-          }
-
-          if(hitsRef.current >= CB_TARGET_HITS){
-            endRound(true);
-            const canvasWin = canvasRef.current;
-            if(canvasWin) drawFrame(canvasWin.getContext("2d"), now);
-            return;
+            const cheers = ["POW!", "ZAP!", "BOOM!", "NICE!", "YES!", "COIN!"];
+            pushFloat(hx, hy - 8, cheers[Math.min(cheers.length - 1, coinsCollectedRef.current - 1)] || "POW!", paletteRef.current.hud);
+            if(coinsCollectedRef.current >= CB_TARGET_COINS){
+              endRound(true);
+              const canvasWin = canvasRef.current;
+              if(canvasWin) drawFrame(canvasWin.getContext("2d"), now);
+              return;
+            }
           }
           break;
         }
@@ -3715,18 +3922,28 @@ function CoinBlasterGame(props){
     playBlasterSfx("start");
     finishedRef.current = false;
     celebrateRef.current = false;
-    hitsRef.current = 0;
+    coinsCollectedRef.current = 0;
+    livesRef.current = CB_LIVES;
     lasersRef.current = [];
     coinsRef.current = [];
     particlesRef.current = [];
     floatsRef.current = [];
+    cometsRef.current = [];
     starsRef.current = cbBuildStars();
     shipRef.current = {x: CB_W / 2, y: CB_H - 56, tilt: 0, thrust: 0};
     secsLeftRef.current = CB_DURATION_SECS;
     lastScarySpawnRef.current = 0;
     shakeRef.current = 0;
     flashRef.current = 0;
-    setHudHits(0);
+    muzzleRef.current = 0;
+    hitStopRef.current = 0;
+    waveRef.current = 1;
+    waveBannerRef.current = {text: "WAVE 1!", life: 1.2};
+    alertRef.current = {text: "", life: 0};
+    nebulaDriftRef.current = 0;
+    setHudCoins(0);
+    setHudLives(CB_LIVES);
+    setHudWave(1);
     setHudSecs(CB_DURATION_SECS);
     setResultAmount(null);
     setResultWon(false);
@@ -3766,10 +3983,10 @@ function CoinBlasterGame(props){
   }
 
   const instruct = gameStage === "ready"
-    ? kidName + " — 1 minute to blast " + CB_TARGET_HITS + " targets!"
+    ? kidName + " — collect " + CB_TARGET_COINS + " coins in 1:00!"
     : showResult
       ? (resultWon ? "Legendary — tap Done when ready" : "No coins this run — tap Done")
-      : "TIME " + cbFormatTime(hudSecs) + " · Hits " + hudHits + "/" + CB_TARGET_HITS;
+      : "TIME " + cbFormatTime(hudSecs) + " · Coins " + hudCoins + "/" + CB_TARGET_COINS + " · Wave " + hudWave;
 
   return (
     <div className="modal coin-drop-modal coin-blaster-modal">
@@ -3786,34 +4003,38 @@ function CoinBlasterGame(props){
             width={CB_W}
             height={CB_H}
             role="img"
-            aria-label={"Hero Blaster. "+kidName+" ship. Hits "+hudHits+" of "+CB_TARGET_HITS+". "+cbFormatTime(hudSecs)+" left."}
+            aria-label={"Hero Blaster. "+kidName+" ship. Coins "+hudCoins+" of "+CB_TARGET_COINS+". "+hudLives+" lives. "+cbFormatTime(hudSecs)+" left."}
           />
           {gameStage === "ready" && (
             <div className="coin-drop-rules coin-blaster-rules" aria-live="polite" style={{borderColor: theme.accent}}>
               <p className="coin-drop-rules-title" style={{color: theme.accent}}>Hero mission — 1:00</p>
               <ol className="coin-drop-rules-list">
-                <li>Pilot <strong>{kidName}</strong>&apos;s spaceship with ◀ ▶</li>
-                <li>Hold <strong>FIRE</strong> for lasers — coins take 1 hit</li>
-                <li>Watch for <strong>space bugs</strong> — they need <strong>3 hits</strong>!</li>
-                <li>Score <strong>{CB_TARGET_HITS} hits</strong> before time runs out</li>
+                <li>Pilot <strong>{kidName}</strong>&apos;s twin-laser ship with ◀ ▶</li>
+                <li>Collect <strong>{CB_TARGET_COINS} coins</strong> — only coins count!</li>
+                <li><strong>Space bugs</strong> take 3 hits and block your shots</li>
+                <li>Bugs in the red zone steal a <strong>life</strong> ({CB_LIVES} lives)</li>
               </ol>
               <div className="coin-drop-slide-hint" aria-hidden="true">
                 <span className="coin-drop-finger">🚀</span>
-                <span>Launch when ready</span>
+                <span>3 waves · Launch when ready</span>
               </div>
             </div>
           )}
           {showResult ? (
-            <div className={"coin-drop-result" + (resultWon ? " is-vault" : " is-side")}>
+            <div className={"coin-drop-result coin-blaster-result" + (resultWon ? " is-vault" : " is-side")}>
               <div className="comic burst-label">{resultWon ? "MISSION CLEAR!" : "Almost!"}</div>
-              {resultWon && <div className="coin-drop-sub">Hero flight complete</div>}
+              {resultWon && <div className="coin-drop-sub">Hero flight complete · Wave {hudWave}</div>}
               {boostFlash && <div className="coin-drop-boost">2× POWER-UP!</div>}
               {resultWon && isPractice
                 ? <div className="coin-drop-amt coin-drop-practice">Practice — no coins added</div>
                 : resultWon && resultAmount != null && (
                   <div className="coin-drop-amt">+{resultAmount} coin{resultAmount === 1 ? "" : "s"}</div>
                 )}
-              {!resultWon && <div className="coin-drop-sub">Need {CB_TARGET_HITS} hits — try again next time</div>}
+              {!resultWon && (
+                <div className="coin-drop-sub">
+                  Need {CB_TARGET_COINS} coins (got {hudCoins}) · keep bugs out of the danger zone
+                </div>
+              )}
             </div>
           ) : null}
         </div>
@@ -4717,7 +4938,7 @@ function App(){
       setPendingReward(reward);
       deferUnlockModalRef.current = true;
       setModal("coinBlaster");
-      flash("Coin Blaster — hit 8 coins!");
+      flash("Coin Blaster — collect 14 coins!");
       return;
     }
   };
