@@ -1658,6 +1658,9 @@ function CoinDropGame(props){
     <div className="modal coin-drop-modal">
       <div className={"coin-drop-sheet kid-"+kid.id} onClick={function(e){ e.stopPropagation(); }}>
         <div className="coin-drop-head">
+          {gameStage !== "complete" && (
+            <button className="coin-drop-exit" type="button" aria-label="Close game" onClick={handleClose}>✕</button>
+          )}
           <h2 className="comic">{headTitle}</h2>
           <p className="coin-drop-instructions">{instruct}</p>
           {(tiltUnavailable || !tiltAllowedSetting) && gameStage === "dropping" && (
@@ -1747,10 +1750,6 @@ function CoinDropGame(props){
               onPointerCancel={function(){ buttonSteerRef.current = 0; }}
             >RIGHT ▶</button>
           </div>
-        )}
-
-        {gameStage !== "complete" && (
-          <button className="btn close" type="button" onClick={handleClose}>Close</button>
         )}
       </div>
     </div>
@@ -2268,6 +2267,9 @@ function CoinChaseGame(props){
     <div className="modal coin-drop-modal coin-chase-modal">
       <div className={"coin-drop-sheet coin-chase-sheet kid-"+kid.id} onClick={function(e){ e.stopPropagation(); }}>
         <div className="coin-drop-head">
+          {gameStage !== "complete" && (
+            <button className="coin-drop-exit" type="button" aria-label="Close game" onClick={handleClose}>✕</button>
+          )}
           <h2 className="comic">{headTitle}</h2>
           <p className="coin-drop-instructions">{instruct}</p>
         </div>
@@ -2335,10 +2337,6 @@ function CoinChaseGame(props){
             <button type="button" className="coin-drop-arrow coin-chase-down" aria-label="Move down"
               onPointerDown={function(e){ e.preventDefault(); trySetDir(0, 1); }}>⬇</button>
           </div>
-        )}
-
-        {gameStage !== "complete" && (
-          <button className="btn close" type="button" onClick={handleClose}>Close</button>
         )}
       </div>
     </div>
@@ -2760,6 +2758,9 @@ function MazeDashGame(props){
     <div className="modal coin-drop-modal maze-dash-modal">
       <div className={"coin-drop-sheet maze-dash-sheet kid-"+kid.id} onClick={function(e){ e.stopPropagation(); }}>
         <div className="coin-drop-head">
+          {gameStage !== "complete" && (
+            <button className="coin-drop-exit" type="button" aria-label="Close game" onClick={handleClose}>✕</button>
+          )}
           <h2 className="comic">{headTitle}</h2>
           <p className="coin-drop-instructions">{instruct}</p>
         </div>
@@ -2827,10 +2828,6 @@ function MazeDashGame(props){
             <button type="button" className="coin-drop-arrow coin-chase-down" aria-label="Move down"
               onPointerDown={function(e){ e.preventDefault(); trySetDir(0, 1); }}>⬇</button>
           </div>
-        )}
-
-        {gameStage !== "complete" && (
-          <button className="btn close" type="button" onClick={handleClose}>Close</button>
         )}
       </div>
     </div>
@@ -3993,6 +3990,9 @@ function CoinBlasterGame(props){
     <div className="modal coin-drop-modal coin-blaster-modal">
       <div className={"coin-drop-sheet coin-blaster-sheet kid-"+(kid && kid.id)} onClick={function(e){ e.stopPropagation(); }}>
         <div className="coin-drop-head">
+          {gameStage !== "complete" && gameStage !== "won" && (
+            <button className="coin-drop-exit" type="button" aria-label="Close game" onClick={handleClose}>✕</button>
+          )}
           <h2 className="comic">{headTitle}</h2>
           <p className="coin-drop-instructions">{instruct}</p>
         </div>
@@ -4084,10 +4084,6 @@ function CoinBlasterGame(props){
               onPointerCancel={function(){ buttonSteerRef.current = 0; }}
             >RIGHT ▶</button>
           </div>
-        )}
-
-        {gameStage !== "complete" && gameStage !== "won" && (
-          <button className="btn close" type="button" onClick={handleClose}>Close</button>
         )}
       </div>
     </div>

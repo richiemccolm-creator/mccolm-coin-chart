@@ -2158,7 +2158,12 @@ function CoinDropGame(props) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-head"
-  }, /*#__PURE__*/React.createElement("h2", {
+  }, gameStage !== "complete" && /*#__PURE__*/React.createElement("button", {
+    className: "coin-drop-exit",
+    type: "button",
+    "aria-label": "Close game",
+    onClick: handleClose
+  }, "✕"), /*#__PURE__*/React.createElement("h2", {
     className: "comic"
   }, headTitle), /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
@@ -2260,11 +2265,7 @@ function CoinDropGame(props) {
     onPointerCancel: function onPointerCancel() {
       buttonSteerRef.current = 0;
     }
-  }, "RIGHT ▶")), gameStage !== "complete" && /*#__PURE__*/React.createElement("button", {
-    className: "btn close",
-    type: "button",
-    onClick: handleClose
-  }, "Close")));
+  }, "RIGHT ▶"))));
 }
 
 /* ================= COIN CHASE MINI-GAME ================= */
@@ -2818,7 +2819,12 @@ function CoinChaseGame(props) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-head"
-  }, /*#__PURE__*/React.createElement("h2", {
+  }, gameStage !== "complete" && /*#__PURE__*/React.createElement("button", {
+    className: "coin-drop-exit",
+    type: "button",
+    "aria-label": "Close game",
+    onClick: handleClose
+  }, "✕"), /*#__PURE__*/React.createElement("h2", {
     className: "comic"
   }, headTitle), /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
@@ -2910,11 +2916,7 @@ function CoinChaseGame(props) {
       e.preventDefault();
       trySetDir(0, 1);
     }
-  }, "⬇")), gameStage !== "complete" && /*#__PURE__*/React.createElement("button", {
-    className: "btn close",
-    type: "button",
-    onClick: handleClose
-  }, "Close")));
+  }, "⬇"))));
 }
 
 /* ================= MAZE DASH MINI-GAME ================= */
@@ -3338,7 +3340,12 @@ function MazeDashGame(props) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-head"
-  }, /*#__PURE__*/React.createElement("h2", {
+  }, gameStage !== "complete" && /*#__PURE__*/React.createElement("button", {
+    className: "coin-drop-exit",
+    type: "button",
+    "aria-label": "Close game",
+    onClick: handleClose
+  }, "✕"), /*#__PURE__*/React.createElement("h2", {
     className: "comic"
   }, headTitle), /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
@@ -3430,11 +3437,7 @@ function MazeDashGame(props) {
       e.preventDefault();
       trySetDir(0, 1);
     }
-  }, "⬇")), gameStage !== "complete" && /*#__PURE__*/React.createElement("button", {
-    className: "btn close",
-    type: "button",
-    onClick: handleClose
-  }, "Close")));
+  }, "⬇"))));
 }
 
 /* ================= COIN BLASTER (hero ship) ================= */
@@ -4641,7 +4644,12 @@ function CoinBlasterGame(props) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-head"
-  }, /*#__PURE__*/React.createElement("h2", {
+  }, gameStage !== "complete" && gameStage !== "won" && /*#__PURE__*/React.createElement("button", {
+    className: "coin-drop-exit",
+    type: "button",
+    "aria-label": "Close game",
+    onClick: handleClose
+  }, "✕"), /*#__PURE__*/React.createElement("h2", {
     className: "comic"
   }, headTitle), /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
@@ -4751,11 +4759,7 @@ function CoinBlasterGame(props) {
     onPointerCancel: function onPointerCancel() {
       buttonSteerRef.current = 0;
     }
-  }, "RIGHT ▶")), gameStage !== "complete" && gameStage !== "won" && /*#__PURE__*/React.createElement("button", {
-    className: "btn close",
-    type: "button",
-    onClick: handleClose
-  }, "Close")));
+  }, "RIGHT ▶"))));
 }
 
 /* ================= APP ================= */
