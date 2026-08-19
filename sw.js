@@ -1,5 +1,5 @@
 /* Coin Chart — offline shell cache */
-var CACHE = "coin-chart-v22";
+var CACHE = "coin-chart-v23";
 var ASSETS = [
   "/",
   "/index.html",

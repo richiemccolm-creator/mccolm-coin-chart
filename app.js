@@ -853,11 +853,13 @@ function defaultSettings() {
     heroTimerSecs: 300
   };
 }
+function isBrushPlayGame(g) {
+  return g === "coinDrop" || g === "coinChase" || g === "mazeDash" || g === "coinBlaster";
+}
 function normalizeSettings(raw) {
   var base = defaultSettings();
   if (!raw || _typeof(raw) !== "object") return base;
-  var last = "coinDrop";
-  if (raw.lastBrushGame === "coinChase") last = "coinChase";else if (raw.lastBrushGame === "mazeDash") last = "mazeDash";
+  var last = isBrushPlayGame(raw.lastBrushGame) ? raw.lastBrushGame : "coinDrop";
   var heroSecs = parseInt(raw.heroTimerSecs, 10);
   if (!isFinite(heroSecs)) heroSecs = base.heroTimerSecs;
   heroSecs = clamp(heroSecs, 30, 3600);
@@ -871,6 +873,7 @@ function normalizeSettings(raw) {
 function nextBrushGame(last) {
   if (last === "coinDrop") return "coinChase";
   if (last === "coinChase") return "mazeDash";
+  if (last === "mazeDash") return "coinBlaster";
   return "coinDrop";
 }
 function isPracticeBrushSource(source) {
@@ -2563,6 +2566,8 @@ function CoinChaseGame(props) {
     }).length + " left", 16, 19);
     ctx.textAlign = "right";
     var remain = endDeadlineRef.current ? Math.max(0, Math.ceil((endDeadlineRef.current - Date.now()) / 1000)) : CC_TIME_SEC;
+    ctx.fillStyle = remain <= 8 ? "#ffc42e" : "#fff";
+    ctx.font = remain <= 8 ? "900 16px Luckiest Guy,Impact,sans-serif" : "bold 13px Nunito, sans-serif";
     ctx.fillText("⏱ " + remain + "s", CC_W - 16, 19);
   };
   var finishGame = function finishGame(won) {
@@ -2826,7 +2831,13 @@ function CoinChaseGame(props) {
     onClick: handleClose
   }, "✕"), /*#__PURE__*/React.createElement("h2", {
     className: "comic"
-  }, headTitle), /*#__PURE__*/React.createElement("p", {
+  }, headTitle), gameStage === "playing" ? /*#__PURE__*/React.createElement(PlayClock, {
+    secs: secsLeft,
+    total: CC_TIME_SEC,
+    urgentAt: 8,
+    label: "TIME LEFT",
+    display: secsLeft + "s"
+  }) : /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
   }, instruct)), /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-board coin-chase-board",
@@ -3087,10 +3098,10 @@ function MazeDashGame(props) {
     });
     ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.fillRect(MD_W / 2 - 60, 4, 120, 22);
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 13px Nunito, sans-serif";
-    ctx.textAlign = "center";
     var remain = endDeadlineRef.current ? Math.max(0, Math.ceil((endDeadlineRef.current - Date.now()) / 1000)) : MD_TIME_SEC;
+    ctx.fillStyle = remain <= 8 ? "#ffc42e" : "#fff";
+    ctx.font = remain <= 8 ? "900 16px Luckiest Guy,Impact,sans-serif" : "bold 13px Nunito, sans-serif";
+    ctx.textAlign = "center";
     ctx.fillText("⏱ " + remain + "s", MD_W / 2, 19);
   };
   var finishGame = function finishGame(won) {
@@ -3347,7 +3358,13 @@ function MazeDashGame(props) {
     onClick: handleClose
   }, "✕"), /*#__PURE__*/React.createElement("h2", {
     className: "comic"
-  }, headTitle), /*#__PURE__*/React.createElement("p", {
+  }, headTitle), gameStage === "playing" ? /*#__PURE__*/React.createElement(PlayClock, {
+    secs: secsLeft,
+    total: MD_TIME_SEC,
+    urgentAt: 8,
+    label: "TIME LEFT",
+    display: secsLeft + "s"
+  }) : /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
   }, instruct)), /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-board maze-dash-board",
@@ -3466,6 +3483,32 @@ function cbFormatTime(totalSecs) {
   var m = Math.floor(secs / 60);
   var s = secs % 60;
   return m + ":" + (s < 10 ? "0" : "") + s;
+}
+
+/* Big kid-facing countdown — header of timed brushing games */
+function PlayClock(props) {
+  var secs = Math.max(0, props.secs | 0);
+  var total = Math.max(1, props.total | 0);
+  var urgentAt = props.urgentAt == null ? 10 : props.urgentAt;
+  var urgent = secs <= urgentAt;
+  var frac = Math.max(0, Math.min(1, secs / total));
+  return /*#__PURE__*/React.createElement("div", {
+    className: "play-clock" + (urgent ? " is-urgent" : ""),
+    "aria-live": "polite",
+    "aria-label": (props.label || "Time left") + " " + (props.display || secs + " seconds")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "play-clock-label"
+  }, props.label || "TIME LEFT"), /*#__PURE__*/React.createElement("div", {
+    className: "play-clock-num"
+  }, props.display || secs + "s"), /*#__PURE__*/React.createElement("div", {
+    className: "play-clock-track",
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "play-clock-fill" + (urgent ? " is-urgent" : ""),
+    style: {
+      width: frac * 100 + "%"
+    }
+  })));
 }
 function cbWaveFromElapsed(elapsedMs) {
   if (elapsedMs < 20000) return 1;
@@ -4070,45 +4113,53 @@ function CoinBlasterGame(props) {
       drawShip(ctx, shipRef.current, t);
     }
 
-    /* HUD — coins + lives left, timer right */
+    /* HUD — coins + lives left, giant timer right */
+    var secs = Math.max(0, secsLeftRef.current);
+    var urgent = secs <= 10;
+    var timerPulse = urgent && Math.floor(t / 250) % 2 === 0;
+    var timeFrac = Math.max(0, Math.min(1, secs / CB_DURATION_SECS));
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(0, 0, CB_W, 16);
+    ctx.fillStyle = urgent ? timerPulse ? "#ff3b3b" : "#ffc42e" : pal.bar;
+    ctx.fillRect(0, 0, CB_W * timeFrac, 16);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, CB_W, 16);
     ctx.fillStyle = "rgba(0,0,0,0.62)";
     ctx.strokeStyle = pal.hud;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(8, 8, 128, 52, 8) : ctx.rect(8, 8, 128, 52);
+    ctx.roundRect ? ctx.roundRect(8, 22, 128, 52, 8) : ctx.rect(8, 22, 128, 52);
     ctx.fill();
     ctx.stroke();
-    var secs = Math.max(0, secsLeftRef.current);
-    var urgent = secs <= 10;
-    var timerPulse = urgent && Math.floor(t / 250) % 2 === 0;
-    ctx.fillStyle = urgent ? timerPulse ? "#ff3b3b" : "#8b0000" : "rgba(0,0,0,0.65)";
+    ctx.fillStyle = urgent ? timerPulse ? "#ff3b3b" : "#8b0000" : "rgba(0,0,0,0.72)";
     ctx.strokeStyle = urgent ? "#ffc42e" : pal.hud;
-    ctx.lineWidth = urgent ? 3.5 : 2.5;
+    ctx.lineWidth = urgent ? 4 : 3;
     ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(CB_W - 118, 6, 110, 52, 10) : ctx.rect(CB_W - 118, 6, 110, 52);
+    ctx.roundRect ? ctx.roundRect(CB_W - 168, 20, 160, 78, 12) : ctx.rect(CB_W - 168, 20, 160, 78);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = pal.hud;
     ctx.font = "900 14px Luckiest Guy,Impact,sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText("COINS " + coinsCollectedRef.current + "/" + CB_TARGET_COINS, 16, 28);
+    ctx.fillText("COINS " + coinsCollectedRef.current + "/" + CB_TARGET_COINS, 16, 42);
     ctx.font = "bold 12px Nunito,sans-serif";
     ctx.fillStyle = "#fff";
     var hearts = "";
     for (var hi = 0; hi < CB_LIVES; hi++) {
       hearts += hi < livesRef.current ? "♥ " : "♡ ";
     }
-    ctx.fillText(hearts.trim(), 16, 48);
+    ctx.fillText(hearts.trim(), 16, 62);
     ctx.fillStyle = "rgba(255,255,255,0.7)";
     ctx.font = "bold 10px Nunito,sans-serif";
-    ctx.fillText("WAVE " + waveRef.current, 88, 48);
-    ctx.fillStyle = urgent ? "#ffc42e" : "rgba(255,255,255,0.75)";
-    ctx.font = "bold 11px Nunito,sans-serif";
+    ctx.fillText("WAVE " + waveRef.current, 88, 62);
+    ctx.fillStyle = urgent ? "#ffc42e" : "rgba(255,255,255,0.85)";
+    ctx.font = "900 13px Luckiest Guy,Impact,sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("TIME LEFT", CB_W - 63, 22);
+    ctx.fillText("TIME LEFT", CB_W - 88, 42);
     ctx.fillStyle = urgent ? "#fff" : "#ffc42e";
-    ctx.font = "900 26px Luckiest Guy,Impact,sans-serif";
-    ctx.fillText(cbFormatTime(secs), CB_W - 63, 48);
+    ctx.font = urgent ? "900 46px Luckiest Guy,Impact,sans-serif" : "900 42px Luckiest Guy,Impact,sans-serif";
+    ctx.fillText(cbFormatTime(secs), CB_W - 88, 86);
 
     /* coin progress bar */
     var barX = 10,
@@ -4125,11 +4176,6 @@ function CoinBlasterGame(props) {
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 1.5;
     ctx.strokeRect(barX, barY, barW, barH);
-    var timeFrac = Math.max(0, Math.min(1, secs / CB_DURATION_SECS));
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
-    ctx.fillRect(CB_W - 118, 60, 110, 5);
-    ctx.fillStyle = urgent ? "#ff5b5b" : pal.bar;
-    ctx.fillRect(CB_W - 118, 60, 110 * timeFrac, 5);
 
     /* wave / alert banners */
     if (waveBannerRef.current.life > 0) {
@@ -4152,8 +4198,8 @@ function CoinBlasterGame(props) {
       ctx.lineWidth = 3;
       ctx.font = "900 18px Luckiest Guy,Impact,sans-serif";
       ctx.textAlign = "center";
-      ctx.strokeText(alertRef.current.text, CB_W / 2, 96);
-      ctx.fillText(alertRef.current.text, CB_W / 2, 96);
+      ctx.strokeText(alertRef.current.text, CB_W / 2, 118);
+      ctx.fillText(alertRef.current.text, CB_W / 2, 118);
       ctx.globalAlpha = 1;
     }
     if (flashRef.current > 0) {
@@ -4651,7 +4697,13 @@ function CoinBlasterGame(props) {
     onClick: handleClose
   }, "✕"), /*#__PURE__*/React.createElement("h2", {
     className: "comic"
-  }, headTitle), /*#__PURE__*/React.createElement("p", {
+  }, headTitle), gameStage === "playing" ? /*#__PURE__*/React.createElement(PlayClock, {
+    secs: hudSecs,
+    total: CB_DURATION_SECS,
+    urgentAt: 10,
+    label: "TIME LEFT",
+    display: cbFormatTime(hudSecs)
+  }) : /*#__PURE__*/React.createElement("p", {
     className: "coin-drop-instructions"
   }, instruct)), /*#__PURE__*/React.createElement("div", {
     className: "coin-drop-board coin-blaster-board"
@@ -6112,7 +6164,7 @@ function App() {
       var desc = job ? job.name + (job.sub ? " (" + job.sub + ")" : "") : "Brush teeth";
       var source = job ? job.id : "brush-am";
       var amount = job ? job.coins : 1;
-      var nextGame = settings.lastBrushGame === "coinChase" ? "coinChase" : settings.lastBrushGame === "mazeDash" ? "mazeDash" : "coinDrop";
+      var nextGame = isBrushPlayGame(settings.lastBrushGame) ? settings.lastBrushGame : "coinDrop";
       var reward = {
         rewardId: makeRewardId(),
         kidId: kid,
@@ -7501,7 +7553,7 @@ function App() {
         });
       });
     }
-  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Brushing reward games"), /*#__PURE__*/React.createElement("em", null, "After brushing, rotate Coin Drop, Coin Chase, and Maze Dash. Coin is always kept."))), /*#__PURE__*/React.createElement("label", {
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "Brushing reward games"), /*#__PURE__*/React.createElement("em", null, "After brushing, rotate Coin Drop, Coin Chase, Maze Dash, and Coin Blaster. Coin is always kept."))), /*#__PURE__*/React.createElement("label", {
     className: "settings-toggle"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
